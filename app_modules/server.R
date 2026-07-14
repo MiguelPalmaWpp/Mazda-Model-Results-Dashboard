@@ -265,7 +265,11 @@ server <- function(input, output, session) {
     content = function(file) {
       result <- analysis()
       readr::write_csv(
-        build_long_format_table(result$df_med, result$df_input),
+        build_long_format_table(
+          result$df_med_original,
+          result$df_input,
+          if (isTRUE(result$gradient_applied)) result$df_med else NULL
+        ),
         file
       )
     }

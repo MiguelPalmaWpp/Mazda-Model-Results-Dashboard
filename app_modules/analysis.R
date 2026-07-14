@@ -3,6 +3,7 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
                            use_gradient, gradient_path, gradient_sheet) {
   df <- data_loaded$df
   df_med <- data_loaded$df_med
+  df_med_original <- df_med
   df_pct <- data_loaded$df_pct
   df_input <- data_loaded$df_input
   gradient_applied <- FALSE
@@ -58,6 +59,7 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   list(
     df = df,
     df_med = df_med,
+    df_med_original = df_med_original,
     df_pct = df_pct,
     df_input = df_input,
     df_weekly = df_weekly,

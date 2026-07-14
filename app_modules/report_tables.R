@@ -56,16 +56,16 @@ build_historical_contributions_table <- function(df_med) {
     setNames(sub("^Contrib_", "", colnames(.)))
 }
 
-build_long_format_table <- function(df_med, df_input) {
-  contrib_cols <- colnames(df_med)[grepl("^Contrib_", colnames(df_med))]
-  if ("Base" %in% colnames(df_med)) {
+build_long_format_table <- function(df_med_original, df_input, df_med_gradient = NULL) {
+  contrib_cols <- colnames(df_med_original)[grepl("^Contrib_", colnames(df_med_original))]
+  if ("Base" %in% colnames(df_med_original)) {
     contrib_cols <- c(contrib_cols, "Base")
   }
   if (length(contrib_cols) == 0) {
     stop("No Contrib_ columns found for Long Format export.")
   }
 
-  df_contrib_long <- df_med %>%
+  df_contrib_long <- df_med_original %>%
     select(Date, all_of(contrib_cols)) %>%
     pivot_longer(
       cols = -Date,
@@ -73,6 +73,21 @@ build_long_format_table <- function(df_med, df_input) {
       values_to = "contribution"
     ) %>%
     mutate(variable = trimws(sub("^Contrib_", "", variable)))
+
+  if (!is.null(df_med_gradient)) {
+    gradient_cols <- intersect(contrib_cols, colnames(df_med_gradient))
+    df_gradient_long <- df_med_gradient %>%
+      select(Date, all_of(gradient_cols)) %>%
+      pivot_longer(
+        cols = -Date,
+        names_to = "variable",
+        values_to = "contribution_gradient"
+      ) %>%
+      mutate(variable = trimws(sub("^Contrib_", "", variable)))
+  } else {
+    df_gradient_long <- df_contrib_long %>%
+      transmute(Date, variable, contribution_gradient = contribution)
+  }
 
   spend_cols <- setdiff(colnames(df_input), c("Date", "Actual"))
   spend_cols <- intersect(spend_cols, unique(df_contrib_long$variable))
@@ -93,16 +108,13 @@ build_long_format_table <- function(df_med, df_input) {
 
   df_contrib_long %>%
     full_join(df_spend_long, by = c("Date", "variable")) %>%
+    left_join(df_gradient_long, by = c("Date", "variable")) %>%
     mutate(
       contribution = replace_na(contribution, 0),
       spend = replace_na(spend, 0),
-      mapping = lapply(paste0("Contrib_", variable), get_channel_mapping),
-      Channel = sapply(mapping, `[[`, "channel"),
-      Category = sapply(mapping, `[[`, "category"),
-      `Sub-Category` = sapply(mapping, `[[`, "sub_category"),
-      Funnel = sapply(mapping, `[[`, "funnel")
+      contribution_gradient = replace_na(contribution_gradient, contribution)
     ) %>%
-    select(Date, variable, contribution, spend, Channel, Category, `Sub-Category`, Funnel) %>%
+    select(Date, variable, contribution, spend, contribution_gradient) %>%
     arrange(Date, variable) %>%
     round_numeric_columns(3)
 }
