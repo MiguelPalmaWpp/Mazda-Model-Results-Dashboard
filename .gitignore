@@ -1,0 +1,15 @@
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+rsconnect/
+*.zip
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.log
+__pycache__/
+shiny-run.*.log
+.DS_Store
+Thumbs.db

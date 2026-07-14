@@ -1,0 +1,17 @@
+Title: Mazda Model Results Dashboard
+Version: 0.1.0
+Authors@R: person("Inside Media", role = c("aut", "cre"), email = "analytics@insidemedia.net")
+Description: Shiny dashboard for reviewing Mazda model fit, contribution, ROI, and downloadable reporting outputs.
+License: Proprietary
+Encoding: UTF-8
+Imports:
+    DT,
+    dplyr,
+    ggplot2,
+    gridExtra,
+    lubridate,
+    openxlsx,
+    plotly,
+    readr,
+    shiny,
+    tidyr

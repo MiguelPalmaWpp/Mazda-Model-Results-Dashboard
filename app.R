@@ -1,0 +1,26 @@
+library(shiny)
+library(dplyr)
+library(openxlsx)
+library(lubridate)
+library(ggplot2)
+library(readr)
+library(tidyr)
+library(gridExtra)
+library(plotly)
+library(DT)
+
+options(shiny.maxRequestSize = 300 * 1024^2)
+
+app_env <- environment()
+
+source("functions.R", local = app_env)
+source("app_modules/config.R", local = app_env)
+source("app_modules/data_loading.R", local = app_env)
+source("app_modules/model_fit_plots.R", local = app_env)
+source("app_modules/report_tables.R", local = app_env)
+source("app_modules/analysis.R", local = app_env)
+source("app_modules/ui_components.R", local = app_env)
+source("app_modules/ui.R", local = app_env)
+source("app_modules/server.R", local = app_env)
+
+shinyApp(ui, server)
