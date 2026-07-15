@@ -97,20 +97,35 @@ plotly_model_layout <- function(p, top_margin = 78, show_legend = TRUE) {
 
 build_fit_timeseries_plot <- function(df, title) {
   metrics <- calculate_all_metrics(df)
+  has_gradient <- "Pred_Gradient" %in% colnames(df)
+  metrics_gradient <- if (has_gradient) {
+    calculate_all_metrics(df %>% mutate(Pred = Pred_Gradient))
+  } else {
+    NULL
+  }
   subtitle <- paste0(
     "R2 ", round(metrics$R2, 3),
     " | Pearson R ", round(metrics$`Pearson R`, 3),
     " | MAPE ", round(metrics$`MAPE (%)`, 3), "%"
   )
+  if (!is.null(metrics_gradient)) {
+    subtitle <- paste0(
+      subtitle,
+      "<br>Gradient R2 ", round(metrics_gradient$R2, 3),
+      " | Pearson R ", round(metrics_gradient$`Pearson R`, 3),
+      " | MAPE ", round(metrics_gradient$`MAPE (%)`, 3), "%"
+    )
+  }
 
   df_plot <- df %>%
     mutate(
       Date = as.Date(Date),
       Actual_Label = round(Actual, 3),
-      Pred_Label = round(Pred, 3)
+      Pred_Label = round(Pred, 3),
+      Pred_Gradient_Label = if (has_gradient) round(Pred_Gradient, 3) else NA_real_
     )
 
-  plot_ly(df_plot, x = ~Date) %>%
+  p <- plot_ly(df_plot, x = ~Date) %>%
     add_lines(
       y = ~Actual,
       name = "Actual",
@@ -134,7 +149,25 @@ build_fit_timeseries_plot <- function(df, title) {
         "<extra></extra>"
       ),
       customdata = ~Pred_Label
-    ) %>%
+    )
+
+  if (has_gradient) {
+    p <- p %>%
+      add_lines(
+        y = ~Pred_Gradient,
+        name = "Predicted Gradient",
+        line = list(color = "#2fb344", width = 2),
+        hovertemplate = paste(
+          "Date: %{x|%Y-%m-%d}",
+          "<br>Series: Predicted Gradient",
+          "<br>Value: %{customdata:.3f}",
+          "<extra></extra>"
+        ),
+        customdata = ~Pred_Gradient_Label
+      )
+  }
+
+  p %>%
     layout(
       annotations = list(
         list(
@@ -156,18 +189,22 @@ build_fit_timeseries_plot <- function(df, title) {
 }
 
 build_fit_scatter_plot <- function(df, title) {
+  has_gradient <- "Pred_Gradient" %in% colnames(df)
   df_plot <- df %>%
     mutate(
       Date = as.Date(Date),
       Residual = Actual - Pred,
+      Residual_Gradient = if (has_gradient) Actual - Pred_Gradient else NA_real_,
       Abs_Error = abs(Residual),
       Actual_Label = round(Actual, 3),
       Pred_Label = round(Pred, 3),
-      Residual_Label = round(Residual, 3)
+      Residual_Label = round(Residual, 3),
+      Pred_Gradient_Label = if (has_gradient) round(Pred_Gradient, 3) else NA_real_,
+      Residual_Gradient_Label = if (has_gradient) round(Residual_Gradient, 3) else NA_real_
     )
 
-  min_val <- min(df_plot$Actual, df_plot$Pred, na.rm = TRUE) * 0.95
-  max_val <- max(df_plot$Actual, df_plot$Pred, na.rm = TRUE) * 1.05
+  min_val <- min(df_plot$Actual, df_plot$Pred, df_plot$Pred_Gradient, na.rm = TRUE) * 0.95
+  max_val <- max(df_plot$Actual, df_plot$Pred, df_plot$Pred_Gradient, na.rm = TRUE) * 1.05
   trend_df <- data.frame(Actual = numeric(0), Pred = numeric(0))
   if (nrow(df_plot) >= 2 && length(unique(df_plot$Actual)) >= 2) {
     trend_fit <- lm(Pred ~ Actual, data = df_plot)
@@ -176,11 +213,24 @@ build_fit_scatter_plot <- function(df, title) {
   }
 
   metrics <- calculate_all_metrics(df_plot)
+  metrics_gradient <- if (has_gradient) {
+    calculate_all_metrics(df_plot %>% mutate(Pred = Pred_Gradient))
+  } else {
+    NULL
+  }
   subtitle <- paste0(
     "R2: ", round(metrics$R2, 3),
     " | Pearson R: ", round(metrics$`Pearson R`, 3),
     " | MAPE: ", round(metrics$`MAPE (%)`, 3), "%"
   )
+  if (!is.null(metrics_gradient)) {
+    subtitle <- paste0(
+      subtitle,
+      "<br>Gradient R2: ", round(metrics_gradient$R2, 3),
+      " | Pearson R: ", round(metrics_gradient$`Pearson R`, 3),
+      " | MAPE: ", round(metrics_gradient$`MAPE (%)`, 3), "%"
+    )
+  }
 
   p <- plot_ly() %>%
     add_lines(
@@ -203,8 +253,25 @@ build_fit_scatter_plot <- function(df, title) {
         "<br>Predicted: %{y:.3f}",
         "<extra></extra>"
       ),
-      showlegend = FALSE
+      showlegend = has_gradient
     )
+
+  if (has_gradient) {
+    p <- p %>%
+      add_markers(
+        data = df_plot,
+        x = ~Actual,
+        y = ~Pred_Gradient,
+        name = "Observed Gradient",
+        marker = list(color = "#2fb344", size = 7, opacity = 0.54, symbol = "diamond"),
+        hovertemplate = paste(
+          "Actual: %{x:.3f}",
+          "<br>Predicted Gradient: %{y:.3f}",
+          "<extra></extra>"
+        ),
+        showlegend = TRUE
+      )
+  }
 
   if (nrow(trend_df) > 0) {
     p <- p %>%
@@ -237,7 +304,7 @@ build_fit_scatter_plot <- function(df, title) {
       xaxis = list(title = "Actual", range = c(min_val, max_val)),
       yaxis = list(title = "Predicted", range = c(min_val, max_val))
     ) %>%
-    plotly_model_layout(top_margin = 38, show_legend = FALSE)
+    plotly_model_layout(top_margin = if (has_gradient) 62 else 38, show_legend = has_gradient)
 }
 
 build_residuals_plot <- function(df, title) {

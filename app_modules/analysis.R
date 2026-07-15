@@ -14,7 +14,8 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
     df_med <- apply_gradient(df_med, df_gradient)
     df <- df %>%
       select(Date, Actual) %>%
-      inner_join(df_med %>% select(Date, Pred), by = "Date") %>%
+      inner_join(df_med_original %>% select(Date, Pred), by = "Date") %>%
+      inner_join(df_med %>% select(Date, Pred_Gradient = Pred), by = "Date") %>%
       arrange(Date)
     gradient_applied <- TRUE
     gradient_message <- paste("Gradient adjustment applied using sheet:", gradient_sheet)
