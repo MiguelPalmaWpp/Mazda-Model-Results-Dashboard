@@ -114,16 +114,9 @@ build_fit_timeseries_plot <- function(df, title) {
       names_to = "Series",
       values_to = "Value"
     ) %>%
-    mutate(
-      Series = recode(Series, "Pred" = "Predicted"),
-      Tooltip = paste0(
-        "Date: ", Date,
-        "<br>Series: ", Series,
-        "<br>Value: ", round(Value, 3)
-      )
-    )
+    mutate(Series = recode(Series, "Pred" = "Predicted"))
 
-  p <- ggplot(df_plot, aes(x = Date, y = Value, color = Series, group = Series, text = Tooltip)) +
+  p <- ggplot(df_plot, aes(x = Date, y = Value, color = Series, group = Series)) +
     geom_line(
       linewidth = 1.15,
       alpha = 0.95
@@ -138,7 +131,7 @@ build_fit_timeseries_plot <- function(df, title) {
       color = ""
     )
 
-  ggplotly(p, tooltip = "text") %>%
+  ggplotly(p, tooltip = c("x", "y", "colour")) %>%
     plotly_model_layout(top_margin = 58)
 }
 
@@ -147,13 +140,7 @@ build_fit_scatter_plot <- function(df, title) {
     mutate(
       Date = as.Date(Date),
       Residual = Actual - Pred,
-      Abs_Error = abs(Residual),
-      Tooltip = paste0(
-        "Date: ", Date,
-        "<br>Actual: ", round(Actual, 3),
-        "<br>Predicted: ", round(Pred, 3),
-        "<br>Residual: ", round(Residual, 3)
-      )
+      Abs_Error = abs(Residual)
     )
 
   min_val <- min(df_plot$Actual, df_plot$Pred, na.rm = TRUE) * 0.95
@@ -179,9 +166,6 @@ build_fit_scatter_plot <- function(df, title) {
       linewidth = 0.95
     ) +
     geom_point(
-      aes(
-        text = Tooltip
-      ),
       color = "#5B9BD5",
       alpha = 0.64,
       size = 2.3
@@ -196,7 +180,7 @@ build_fit_scatter_plot <- function(df, title) {
       y = "Predicted"
     )
 
-  ggplotly(p, tooltip = "text") %>%
+  ggplotly(p, tooltip = c("x", "y")) %>%
     plotly_model_layout(top_margin = 38, show_legend = FALSE)
 }
 
