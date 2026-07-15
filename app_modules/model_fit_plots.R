@@ -105,34 +105,53 @@ build_fit_timeseries_plot <- function(df, title) {
 
   df_plot <- df %>%
     mutate(
-      Residual = Actual - Pred,
-      Date = as.Date(Date)
-    ) %>%
-    select(Date, Actual, Pred, Residual) %>%
-    pivot_longer(
-      cols = c(Actual, Pred),
-      names_to = "Series",
-      values_to = "Value"
-    ) %>%
-    mutate(Series = recode(Series, "Pred" = "Predicted"))
-
-  p <- ggplot(df_plot, aes(x = Date, y = Value, color = Series, group = Series)) +
-    geom_line(
-      linewidth = 1.15,
-      alpha = 0.95
-    ) +
-    scale_color_manual(values = c("Actual" = "#5B9BD5", "Predicted" = "#f39c12")) +
-    theme_model_fit() +
-    labs(
-      title = NULL,
-      subtitle = NULL,
-      x = "Date",
-      y = "Value",
-      color = ""
+      Date = as.Date(Date),
+      Actual_Label = round(Actual, 3),
+      Pred_Label = round(Pred, 3)
     )
 
-  ggplotly(p, tooltip = c("x", "y", "colour")) %>%
-    plotly_model_layout(top_margin = 58)
+  plot_ly(df_plot, x = ~Date) %>%
+    add_lines(
+      y = ~Actual,
+      name = "Actual",
+      line = list(color = "#5B9BD5", width = 2),
+      hovertemplate = paste(
+        "Date: %{x|%Y-%m-%d}",
+        "<br>Series: Actual",
+        "<br>Value: %{customdata:.3f}",
+        "<extra></extra>"
+      ),
+      customdata = ~Actual_Label
+    ) %>%
+    add_lines(
+      y = ~Pred,
+      name = "Predicted",
+      line = list(color = "#f39c12", width = 2),
+      hovertemplate = paste(
+        "Date: %{x|%Y-%m-%d}",
+        "<br>Series: Predicted",
+        "<br>Value: %{customdata:.3f}",
+        "<extra></extra>"
+      ),
+      customdata = ~Pred_Label
+    ) %>%
+    layout(
+      annotations = list(
+        list(
+          text = subtitle,
+          x = 0,
+          y = 1.12,
+          xref = "paper",
+          yref = "paper",
+          showarrow = FALSE,
+          xanchor = "left",
+          font = list(size = 11, color = "#64748b")
+        )
+      ),
+      xaxis = list(title = "Date"),
+      yaxis = list(title = "Value")
+    ) %>%
+    plotly_model_layout(top_margin = 72)
 }
 
 build_fit_scatter_plot <- function(df, title) {
@@ -140,14 +159,20 @@ build_fit_scatter_plot <- function(df, title) {
     mutate(
       Date = as.Date(Date),
       Residual = Actual - Pred,
-      Abs_Error = abs(Residual)
+      Abs_Error = abs(Residual),
+      Actual_Label = round(Actual, 3),
+      Pred_Label = round(Pred, 3),
+      Residual_Label = round(Residual, 3)
     )
 
   min_val <- min(df_plot$Actual, df_plot$Pred, na.rm = TRUE) * 0.95
   max_val <- max(df_plot$Actual, df_plot$Pred, na.rm = TRUE) * 1.05
-  trend_fit <- lm(Pred ~ Actual, data = df_plot)
-  trend_df <- data.frame(Actual = c(min_val, max_val))
-  trend_df$Pred <- predict(trend_fit, newdata = trend_df)
+  trend_df <- data.frame(Actual = numeric(0), Pred = numeric(0))
+  if (nrow(df_plot) >= 2 && length(unique(df_plot$Actual)) >= 2) {
+    trend_fit <- lm(Pred ~ Actual, data = df_plot)
+    trend_df <- data.frame(Actual = c(min_val, max_val))
+    trend_df$Pred <- predict(trend_fit, newdata = trend_df)
+  }
 
   metrics <- calculate_all_metrics(df_plot)
   subtitle <- paste0(
@@ -156,31 +181,60 @@ build_fit_scatter_plot <- function(df, title) {
     " | MAPE: ", round(metrics$`MAPE (%)`, 3), "%"
   )
 
-  p <- ggplot(df_plot, aes(x = Actual, y = Pred)) +
-    geom_abline(slope = 1, intercept = 0, color = "#94a3b8", linetype = "dashed", linewidth = 0.85) +
-    geom_line(
-      data = trend_df,
-      aes(x = Actual, y = Pred),
-      inherit.aes = FALSE,
-      color = "#4a87c0",
-      linewidth = 0.95
-    ) +
-    geom_point(
-      color = "#5B9BD5",
-      alpha = 0.64,
-      size = 2.3
-    ) +
-    coord_cartesian(xlim = c(min_val, max_val), ylim = c(min_val, max_val)) +
-    theme_model_fit() +
-    theme(legend.position = "none") +
-    labs(
-      title = NULL,
-      subtitle = NULL,
-      x = "Actual",
-      y = "Predicted"
+  p <- plot_ly() %>%
+    add_lines(
+      x = c(min_val, max_val),
+      y = c(min_val, max_val),
+      name = "Perfect Fit",
+      line = list(color = "#94a3b8", width = 1.5, dash = "dash"),
+      hoverinfo = "skip",
+      showlegend = FALSE
+    ) %>%
+    add_markers(
+      data = df_plot,
+      x = ~Actual,
+      y = ~Pred,
+      name = "Observed",
+      marker = list(color = "#5B9BD5", size = 7, opacity = 0.64),
+      customdata = ~paste(Actual_Label, Pred_Label, Residual_Label, sep = "|"),
+      hovertemplate = paste(
+        "Actual: %{x:.3f}",
+        "<br>Predicted: %{y:.3f}",
+        "<extra></extra>"
+      ),
+      showlegend = FALSE
     )
 
-  ggplotly(p, tooltip = c("x", "y")) %>%
+  if (nrow(trend_df) > 0) {
+    p <- p %>%
+      add_lines(
+        data = trend_df,
+        x = ~Actual,
+        y = ~Pred,
+        name = "Trend",
+        line = list(color = "#4a87c0", width = 2),
+        hoverinfo = "skip",
+        showlegend = FALSE
+      )
+  }
+
+  p %>%
+    layout(
+      annotations = list(
+        list(
+          text = subtitle,
+          x = 0,
+          y = 1.08,
+          xref = "paper",
+          yref = "paper",
+          showarrow = FALSE,
+          xanchor = "left",
+          font = list(size = 11, color = "#64748b")
+        )
+      ),
+      xaxis = list(title = "Actual", range = c(min_val, max_val)),
+      yaxis = list(title = "Predicted", range = c(min_val, max_val))
+    ) %>%
     plotly_model_layout(top_margin = 38, show_legend = FALSE)
 }
 
