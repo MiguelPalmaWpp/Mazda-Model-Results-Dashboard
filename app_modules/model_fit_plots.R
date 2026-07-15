@@ -139,19 +139,20 @@ build_fit_timeseries_plot <- function(df, title) {
       annotations = list(
         list(
           text = subtitle,
-          x = 0,
+          x = 1,
           y = 1.12,
           xref = "paper",
           yref = "paper",
           showarrow = FALSE,
-          xanchor = "left",
+          xanchor = "right",
+          align = "right",
           font = list(size = 11, color = "#64748b")
         )
       ),
       xaxis = list(title = "Date"),
       yaxis = list(title = "Value")
     ) %>%
-    plotly_model_layout(top_margin = 72)
+    plotly_model_layout(top_margin = 76)
 }
 
 build_fit_scatter_plot <- function(df, title) {
@@ -223,12 +224,13 @@ build_fit_scatter_plot <- function(df, title) {
       annotations = list(
         list(
           text = subtitle,
-          x = 0,
+          x = 1,
           y = 1.08,
           xref = "paper",
           yref = "paper",
           showarrow = FALSE,
-          xanchor = "left",
+          xanchor = "right",
+          align = "right",
           font = list(size = 11, color = "#64748b")
         )
       ),
