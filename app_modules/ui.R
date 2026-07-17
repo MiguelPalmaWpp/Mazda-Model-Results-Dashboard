@@ -48,7 +48,81 @@ ui <- fluidPage(
       .model-fit-card .card-body { padding-top: 18px; }
       .model-fit-card .js-plotly-plot { width: 100% !important; }
       .dataTables_wrapper { font-size: 12px; }
-      .dt-buttons .btn, .dt-button { font-size: 11px !important; padding: 4px 9px !important; }
+      .dt-toolbar {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .dt-buttons-wrap .dt-buttons { display: flex; gap: 6px; }
+      .dt-buttons .btn,
+      .dt-button,
+      .btn-dt {
+        background: #ffffff !important;
+        border: 1px solid #5B9BD5 !important;
+        border-radius: 6px !important;
+        color: #3f7db8 !important;
+        font-size: 11px !important;
+        font-weight: 650 !important;
+        padding: 5px 10px !important;
+      }
+      .dt-buttons .btn:hover,
+      .dt-button:hover,
+      .btn-dt:hover {
+        background: #eef6ff !important;
+        color: #2f679e !important;
+      }
+      .dt-search-wrap .dataTables_filter { margin: 0; }
+      .dt-search-wrap .dataTables_filter label { margin: 0; }
+      .dt-search-wrap .dataTables_filter input {
+        border: 1px solid #cfdae8 !important;
+        border-radius: 7px !important;
+        color: #1e293b;
+        font-size: 12px;
+        min-height: 32px;
+        padding: 6px 10px !important;
+        width: 220px !important;
+      }
+      table.mazda-dt {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+      }
+      table.mazda-dt thead th {
+        background: #f8fbff !important;
+        border-bottom: 2px solid #5B9BD5 !important;
+        color: #1e293b !important;
+        font-size: 12px !important;
+        font-weight: 750 !important;
+        padding: 9px 10px !important;
+        white-space: nowrap;
+      }
+      table.mazda-dt tbody td {
+        border-bottom: 1px solid #edf3f9 !important;
+        color: #243447;
+        font-size: 12px;
+        padding: 8px 10px !important;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+      table.mazda-dt tbody tr:hover td { background: #f8fbff !important; }
+      table.mazda-dt td.dt-right,
+      table.mazda-dt th.dt-right {
+        font-variant-numeric: tabular-nums;
+        text-align: right !important;
+      }
+      .dt-footer {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+      }
+      .dt-info-wrap .dataTables_info {
+        color: #64748b;
+        font-size: 11.5px;
+        padding-top: 0 !important;
+      }
       table.metrics-matrix {
         border-collapse: separate !important;
         border-spacing: 0 !important;

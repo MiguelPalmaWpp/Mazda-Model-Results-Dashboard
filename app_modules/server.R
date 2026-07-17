@@ -164,7 +164,7 @@ server <- function(input, output, session) {
 
   output$overview_metrics <- renderDT({
     metrics <- analysis()$overview_metrics %>%
-      mutate(Value = round(Value, 3)) %>%
+      mutate(Value = round(Value, 2)) %>%
       tidyr::pivot_wider(
         names_from = Granularity,
         values_from = Value

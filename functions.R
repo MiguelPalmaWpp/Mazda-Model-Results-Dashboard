@@ -740,7 +740,9 @@ build_roi_table <- function(df_med_input, revenue_param,
                        Units * revenue_param, NA_real_),
       
       # ROI placeholder → overwritten by live Excel formula in write_roi_sheet
-      ROI = NA_real_
+      ROI = ifelse(Channel %in% REVENUE_CHANNELS & !is.na(Revenue) & !is.na(Spend) & Spend != 0,
+                   Revenue / Spend,
+                   NA_real_)
     ) %>%
     select(
       Variable                = var_clean,
