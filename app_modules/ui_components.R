@@ -8,7 +8,8 @@ card <- function(title, ..., class = NULL) {
 
 dt_table <- function(data, page_length = 10, scroll_x = TRUE) {
   data <- round_numeric_columns(data, 2)
-  numeric_cols <- which(vapply(data, is.numeric, logical(1)))
+  numeric_cols <- unname(which(vapply(data, is.numeric, logical(1))))
+  text_cols <- unname(setdiff(seq_along(data), numeric_cols))
 
   table <- datatable(
     data,
@@ -27,8 +28,8 @@ dt_table <- function(data, page_length = 10, scroll_x = TRUE) {
       scrollX = scroll_x,
       autoWidth = TRUE,
       columnDefs = list(
-        list(className = "dt-right", targets = numeric_cols - 1),
-        list(className = "dt-left", targets = setdiff(seq_along(data), numeric_cols) - 1)
+        list(className = "dt-right", targets = unname(numeric_cols - 1)),
+        list(className = "dt-left", targets = unname(text_cols - 1))
       ),
       initComplete = JS("dtBlueCallback"),
       language = list(
@@ -50,7 +51,7 @@ dt_table <- function(data, page_length = 10, scroll_x = TRUE) {
 
 metrics_matrix_table <- function(data) {
   data <- round_numeric_columns(data, 2)
-  numeric_cols <- which(vapply(data, is.numeric, logical(1)))
+  numeric_cols <- unname(which(vapply(data, is.numeric, logical(1))))
 
   table <- datatable(
     data,
@@ -64,7 +65,7 @@ metrics_matrix_table <- function(data) {
       autoWidth = TRUE,
       columnDefs = list(
         list(className = "dt-left", targets = 0),
-        list(className = "dt-right", targets = 1:3)
+        list(className = "dt-right", targets = unname(1:3))
       ),
       initComplete = JS("dtBlueCallback")
     ),
