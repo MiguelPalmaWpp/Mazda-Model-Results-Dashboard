@@ -710,7 +710,10 @@ build_roi_table <- function(df_med_input, revenue_param,
   spend_lookup <- setNames(numeric(0), character(0))
   
   if (!is.null(df_input_filtered)) {
-    spend_cols <- setdiff(colnames(df_input_filtered), c("Date", "Actual"))
+    spend_cols <- df_input_filtered %>%
+      select(-any_of(c("Date", "Actual", "Row"))) %>%
+      select(where(is.numeric)) %>%
+      colnames()
     
     if (length(spend_cols) > 0) {
       spend_sums <- df_input_filtered %>%
