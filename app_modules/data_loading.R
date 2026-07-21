@@ -211,6 +211,63 @@ read_model_csv <- function(path, file_label) {
   readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
 }
 
+read_upload_preview <- function(file_row, n_max = 5) {
+  path <- materialize_upload(file_row, "Uploaded file")
+  ext <- tolower(tools::file_ext(path))
+
+  df <- tryCatch({
+    if (ext %in% c("xlsx", "xlsm", "xls")) {
+      openxlsx::read.xlsx(path, rows = 1:(n_max + 1), detectDates = TRUE, check.names = FALSE)
+    } else if (ext == "csv") {
+      readr::read_csv(path, n_max = n_max, show_col_types = FALSE, progress = FALSE)
+    } else {
+      NULL
+    }
+  }, error = function(e) NULL)
+
+  if (is.null(df)) {
+    return(list(cols = character(), n_cols = 0))
+  }
+
+  list(cols = colnames(df), n_cols = ncol(df))
+}
+
+classify_upload_schema <- function(file_row) {
+  preview <- read_upload_preview(file_row)
+  cols <- preview$cols
+  cols_lower <- tolower(cols)
+  base_lower <- tolower(tools::file_path_sans_ext(basename(file_row$name[1])))
+
+  has <- function(required) all(tolower(required) %in% cols_lower)
+  has_any_prefix <- function(prefix) any(grepl(prefix, cols, ignore.case = TRUE))
+
+  if (has(c("row", "observed", "fitted"))) {
+    return(list(type = "predictions", reason = "contains row, observed, and fitted columns"))
+  }
+
+  if (has(c("row", "bias")) && !has(c("observed", "fitted"))) {
+    return(list(type = "new_contributions", reason = "contains row and bias columns"))
+  }
+
+  if (has(c("label", "share_total"))) {
+    return(list(type = "contribution_summary", reason = "contains label and share_total columns"))
+  }
+
+  if (has(c("date", "pred")) && has_any_prefix("^Contrib_")) {
+    return(list(type = "med_contrib", reason = "contains Date, Pred, and Contrib_ columns"))
+  }
+
+  if (has(c("variable", "pct")) || (!"date" %in% cols_lower && preview$n_cols == 2) || grepl("pct|percent|percentage|pct_contrib", base_lower)) {
+    return(list(type = "pct_contrib", reason = "contains Variable/Pct, has two columns, or filename suggests percentages"))
+  }
+
+  if ("date" %in% cols_lower) {
+    return(list(type = "data_input", reason = "contains Date and does not match a model output schema"))
+  }
+
+  list(type = "unknown", reason = "no known schema matched")
+}
+
 load_model_data_from_new_outputs <- function(mff_path, predictions_path, contributions_path,
                                              contribution_summary_path = NULL) {
   df_mff <- read_uploaded_table(mff_path) %>%
@@ -387,25 +444,23 @@ detect_uploaded_files <- function(files) {
     ))
   }
 
-  names_lower <- tolower(files$name)
-  base_lower <- tolower(tools::file_path_sans_ext(basename(files$name)))
-  pick <- function(pattern, source = names_lower) {
-    idx <- which(grepl(pattern, source))
-    if (length(idx) == 0) NULL else files[idx[1], , drop = FALSE]
+  classifications <- lapply(seq_len(nrow(files)), function(i) {
+    file <- files[i, , drop = FALSE]
+    schema <- classify_upload_schema(file)
+    list(file = file, type = schema$type, reason = schema$reason)
+  })
+
+  pick_type <- function(type) {
+    matches <- classifications[vapply(classifications, \(x) identical(x$type, type), logical(1))]
+    if (length(matches) == 0) NULL else matches[[1]]$file
   }
 
-  data_input <- pick("data_input|mff|input", base_lower)
-  predictions <- pick("^predictions$|^out_of_sample_predictions$", base_lower)
-  contribution_summary <- pick("^contribution_summary$", base_lower)
-  contributions <- pick("^contributions$", base_lower)
-  pct <- pick("pct|percent|percentage|pct_contrib", base_lower)
-  med <- pick("med_contrib|^med.*contrib", base_lower)
-
-  if (!is.null(pct) && !is.null(med) && pct$name == med$name) {
-    remaining <- files[files$name != pct$name, , drop = FALSE]
-    idx <- which(grepl("med_contrib|contribution|contrib", tolower(remaining$name)))
-    med <- if (length(idx) == 0) NULL else remaining[idx[1], , drop = FALSE]
-  }
+  data_input <- pick_type("data_input")
+  predictions <- pick_type("predictions")
+  contribution_summary <- pick_type("contribution_summary")
+  contributions <- pick_type("new_contributions")
+  pct <- pick_type("pct_contrib")
+  med <- pick_type("med_contrib")
 
   new_ready <- !is.null(data_input) && !is.null(predictions) && !is.null(contributions)
   legacy_ready <- !is.null(data_input) && !is.null(med) && !is.null(pct)
@@ -417,6 +472,12 @@ detect_uploaded_files <- function(files) {
     "missing"
   }
 
+  schema_diagnostics <- vapply(
+    classifications,
+    \(x) paste0(x$file$name[1], ": ", x$type, " (", x$reason, ")"),
+    character(1)
+  )
+
   diagnostics <- c(
     paste("Detected input format:", input_format),
     paste("MFF / Data Input:", if (is.null(data_input)) "not detected" else data_input$name),
@@ -424,7 +485,9 @@ detect_uploaded_files <- function(files) {
     paste("Contribution Percentages:", if (is.null(pct)) "not detected" else pct$name),
     paste("predictions.csv:", if (is.null(predictions)) "not detected" else predictions$name),
     paste("contributions.csv:", if (is.null(contributions)) "not detected" else contributions$name),
-    paste("contribution_summary.csv:", if (is.null(contribution_summary)) "not detected" else contribution_summary$name)
+    paste("contribution_summary.csv:", if (is.null(contribution_summary)) "not detected" else contribution_summary$name),
+    "Schema classification:",
+    schema_diagnostics
   )
 
   list(
