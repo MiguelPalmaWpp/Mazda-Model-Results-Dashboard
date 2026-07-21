@@ -1,4 +1,29 @@
 server <- function(input, output, session) {
+  full_period_tab_inserted <- reactiveVal(FALSE)
+
+  observe({
+    if (isTRUE(input$compare_new_period) && !isTRUE(full_period_tab_inserted())) {
+      insertTab(
+        inputId = "main_tabs",
+        target = "ROI",
+        position = "after",
+        select = FALSE,
+        tabPanel(
+          "Full Period Contribution",
+          card(
+            "Full Model Period",
+            uiOutput("full_period_version_switch"),
+            DTOutput("full_period_table")
+          )
+        )
+      )
+      full_period_tab_inserted(TRUE)
+    } else if (!isTRUE(input$compare_new_period) && isTRUE(full_period_tab_inserted())) {
+      removeTab(inputId = "main_tabs", target = "Full Period Contribution")
+      full_period_tab_inserted(FALSE)
+    }
+  })
+
   output$gradient_sheet_ui <- renderUI({
     req(input$gradient_file)
     ext <- tolower(tools::file_ext(input$gradient_file$name))

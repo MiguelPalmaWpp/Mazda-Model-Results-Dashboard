@@ -240,7 +240,7 @@ ui <- fluidPage(
     tags$div(
       class = "navbar-center-block",
       tags$span(class = "app-main-title", "Mazda Model Results Dashboard"),
-      tags$span(class = "app-subtitle", "Model fit, contribution, ROI, and report exports")
+      tags$span(class = "app-subtitle", "By Advanced Analytics Colombia")
     ),
     tags$div(
       class = "wpp-header-right",
@@ -309,6 +309,7 @@ ui <- fluidPage(
         tags$div(
           class = "mazda-main-tabs",
           tabsetPanel(
+            id = "main_tabs",
             tabPanel(
               "Overview",
               card("Executive Summary", uiOutput("overview_summary")),
@@ -346,14 +347,6 @@ ui <- fluidPage(
                 "Filtered Period ROI",
                 uiOutput("roi_version_switch"),
                 DTOutput("roi_table")
-              )
-            ),
-            tabPanel(
-              "Full Period Contribution",
-              card(
-                "Full Model Period",
-                uiOutput("full_period_version_switch"),
-                DTOutput("full_period_table")
               )
             ),
             tabPanel("Historical Contributions", card("Historical Contributions Preview", DTOutput("historical_table"))),
