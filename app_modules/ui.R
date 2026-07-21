@@ -340,7 +340,6 @@ ui <- fluidPage(
                 card("Actual vs Predicted Scatter", plotlyOutput("fit_scatter", height = "410px"))
               )
             ),
-            tabPanel("Metrics Over Time", card("Monthly Metrics", DTOutput("metrics_over_time"))),
             tabPanel(
               "ROI",
               card(
@@ -351,7 +350,8 @@ ui <- fluidPage(
             ),
             tabPanel("Historical Contributions", card("Historical Contributions Preview", DTOutput("historical_table"))),
             tabPanel("Pre vs Post", card("Pre vs Post Contribution", DTOutput("pre_vs_post_table"))),
-            tabPanel("Diagnostics", card("Diagnostics", verbatimTextOutput("diagnostics")))
+            tabPanel("Diagnostics", card("Diagnostics", verbatimTextOutput("diagnostics"))),
+            tabPanel("Metrics Over Time", card("Monthly Metrics", DTOutput("metrics_over_time")))
           )
         )
       )
