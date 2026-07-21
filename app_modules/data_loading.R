@@ -74,6 +74,52 @@ read_uploaded_table <- function(path) {
   stop("Unsupported file type: ", ext)
 }
 
+parse_uploaded_date <- function(value, file_label) {
+  if (inherits(value, "Date")) {
+    return(value)
+  }
+
+  if (inherits(value, "POSIXct") || inherits(value, "POSIXt")) {
+    return(as.Date(value))
+  }
+
+  if (is.numeric(value)) {
+    parsed <- suppressWarnings(as.Date(value, origin = "1899-12-30"))
+    if (sum(!is.na(parsed)) > 0) {
+      return(parsed)
+    }
+  }
+
+  value_chr <- trimws(as.character(value))
+  value_chr[value_chr == ""] <- NA_character_
+
+  parsed <- suppressWarnings(lubridate::parse_date_time(
+    value_chr,
+    orders = c(
+      "ymd", "mdy", "dmy",
+      "ymd HMS", "mdy HMS", "dmy HMS",
+      "ymd HM", "mdy HM", "dmy HM",
+      "Ymd", "mdY", "dmY",
+      "Y-m-d", "m/d/Y", "d/m/Y",
+      "m-d-Y", "d-m-Y"
+    ),
+    tz = "UTC"
+  ))
+
+  parsed_date <- as.Date(parsed)
+  if (all(is.na(parsed_date))) {
+    examples <- unique(stats::na.omit(value_chr))[seq_len(min(5, length(stats::na.omit(unique(value_chr)))))]
+    stop(
+      file_label,
+      " has a Date column, but its values could not be parsed. Examples: ",
+      paste(examples, collapse = ", "),
+      ". Use a standard date format such as YYYY-MM-DD."
+    )
+  }
+
+  parsed_date
+}
+
 clean_date_table <- function(df, file_label) {
   bad_cols <- grepl("^X$|^X\\.\\d+$|^\\.\\.\\.\\d+$|^$", colnames(df))
   df <- df[, !bad_cols, drop = FALSE]
@@ -84,7 +130,7 @@ clean_date_table <- function(df, file_label) {
   }
 
   colnames(df)[date_idx[1]] <- "Date"
-  df$Date <- as.Date(df$Date)
+  df$Date <- parse_uploaded_date(df$Date, file_label)
   dplyr::as_tibble(df)
 }
 
