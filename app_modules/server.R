@@ -1,12 +1,11 @@
-source("app_modules/ui_components.R", local = TRUE)
-
 server <- function(input, output, session) {
   output$gradient_sheet_ui <- renderUI({
     req(input$gradient_file)
     ext <- tolower(tools::file_ext(input$gradient_file$name))
 
     if (ext %in% c("xlsx", "xlsm", "xls")) {
-      sheets <- openxlsx::getSheetNames(input$gradient_file$datapath)
+      gradient_path <- materialize_upload(input$gradient_file, "Gradient file")
+      sheets <- openxlsx::getSheetNames(gradient_path)
       selectInput("gradient_sheet", "Gradient Sheet", choices = sheets, selected = sheets[1])
     } else {
       textInput("gradient_sheet", "Gradient Sheet", value = "1")
@@ -66,9 +65,9 @@ server <- function(input, output, session) {
       )
 
       load_model_data(
-        data_input_path = files$data_input$datapath,
-        med_contrib_path = files$med_contrib$datapath,
-        pct_contrib_path = files$pct_contrib$datapath
+        data_input_path = materialize_upload(files$data_input, "MFF / Data Input"),
+        med_contrib_path = materialize_upload(files$med_contrib, "Contributions"),
+        pct_contrib_path = materialize_upload(files$pct_contrib, "Contribution Percentages")
       )
     }, error = function(e) {
       showNotification(paste("Data loading failed:", conditionMessage(e)), type = "error", duration = 12)
@@ -88,7 +87,7 @@ server <- function(input, output, session) {
       }
 
       gradient_path <- if (isTRUE(input$use_gradient) && !is.null(input$gradient_file)) {
-        input$gradient_file$datapath
+        materialize_upload(input$gradient_file, "Gradient file")
       } else {
         NULL
       }

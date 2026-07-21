@@ -1,5 +1,3 @@
-source("app_modules/ui_components.R", local = TRUE)
-
 ui <- fluidPage(
   tags$head(
     tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),

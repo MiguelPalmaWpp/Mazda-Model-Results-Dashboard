@@ -1,3 +1,5 @@
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 round_numeric_columns <- function(data, digits = 3) {
   if (is.null(data) || !is.data.frame(data)) {
     return(data)
@@ -7,7 +9,56 @@ round_numeric_columns <- function(data, digits = 3) {
     mutate(across(where(is.numeric), ~ round(.x, digits)))
 }
 
+safe_upload_name <- function(name) {
+  name <- basename(name %||% "")
+  name <- gsub("[^A-Za-z0-9._-]+", "_", name)
+  if (!nzchar(name)) {
+    name <- paste0("upload_", as.integer(Sys.time()))
+  }
+  name
+}
+
+materialize_upload <- function(file_row, label = "Uploaded file") {
+  if (is.null(file_row) || nrow(file_row) == 0) {
+    stop(label, " was not uploaded.")
+  }
+
+  source_path <- normalizePath(file_row$datapath[1], winslash = "/", mustWork = TRUE)
+  original_name <- safe_upload_name(file_row$name[1])
+  upload_dir <- file.path(tempdir(), "mazda_model_results_uploads")
+  dir.create(upload_dir, recursive = TRUE, showWarnings = FALSE)
+
+  target_path <- file.path(
+    upload_dir,
+    paste0(format(Sys.time(), "%Y%m%d%H%M%OS3"), "_", sample.int(999999, 1), "_", original_name)
+  )
+
+  if (!file.copy(source_path, target_path, overwrite = TRUE)) {
+    stop("Could not prepare ", label, " for reading.")
+  }
+
+  normalizePath(target_path, winslash = "/", mustWork = TRUE)
+}
+
+assert_readable_file <- function(path, label = "File") {
+  if (is.null(path) || !nzchar(path)) {
+    stop(label, " path is empty.")
+  }
+
+  path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  if (!file.exists(path)) {
+    stop(label, " does not exist: ", path)
+  }
+
+  if (file.info(path)$size <= 0) {
+    stop(label, " is empty: ", basename(path))
+  }
+
+  path
+}
+
 read_uploaded_table <- function(path) {
+  path <- assert_readable_file(path, "Uploaded table")
   ext <- tolower(tools::file_ext(path))
 
   if (ext %in% c("xlsx", "xlsm", "xls")) {
@@ -38,6 +89,7 @@ clean_date_table <- function(df, file_label) {
 }
 
 read_pct_contribution <- function(path) {
+  path <- assert_readable_file(path, "Contribution Percentages")
   ext <- tolower(tools::file_ext(path))
 
   df <- if (ext %in% c("xlsx", "xlsm", "xls")) {
