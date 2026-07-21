@@ -45,6 +45,22 @@ ui <- fluidPage(
       .mazda-downloads .btn { width: 100%; margin-bottom: 8px; }
       .mazda-run-btn { width: 100%; margin-top: 4px; }
       .table { font-size: 12.5px; }
+      .table-version-switch {
+        align-items: center;
+        display: flex;
+        justify-content: flex-start;
+        margin: 2px 0 14px;
+      }
+      .table-version-switch .form-group {
+        margin-bottom: 0;
+      }
+      .table-version-switch label.control-label {
+        color: #64748b;
+        font-size: 11.5px;
+        font-weight: 700;
+        margin-right: 10px;
+        text-transform: uppercase;
+      }
       .model-fit-card .card-body { padding-top: 18px; }
       .model-fit-card .js-plotly-plot { width: 100% !important; }
       .dataTables_wrapper { font-size: 12px; }
@@ -326,10 +342,22 @@ ui <- fluidPage(
               )
             ),
             tabPanel("Metrics Over Time", card("Monthly Metrics", DTOutput("metrics_over_time"))),
-            tabPanel("ROI", card("Filtered Period ROI", DTOutput("roi_table"))),
-            tabPanel("ROI with Gradient", card("Filtered Period ROI with Gradient", DTOutput("roi_gradient_table"))),
-            tabPanel("Full Period Contribution", card("Full Model Period", DTOutput("full_period_table"))),
-            tabPanel("Full Period Contribution with Gradient", card("Full Model Period with Gradient", DTOutput("full_period_gradient_table"))),
+            tabPanel(
+              "ROI",
+              card(
+                "Filtered Period ROI",
+                uiOutput("roi_version_switch"),
+                DTOutput("roi_table")
+              )
+            ),
+            tabPanel(
+              "Full Period Contribution",
+              card(
+                "Full Model Period",
+                uiOutput("full_period_version_switch"),
+                DTOutput("full_period_table")
+              )
+            ),
             tabPanel("Historical Contributions", card("Historical Contributions Preview", DTOutput("historical_table"))),
             tabPanel("Pre vs Post", card("Pre vs Post Contribution", DTOutput("pre_vs_post_table"))),
             tabPanel("Diagnostics", card("Diagnostics", verbatimTextOutput("diagnostics")))

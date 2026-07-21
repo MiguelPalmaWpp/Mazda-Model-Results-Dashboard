@@ -214,20 +214,62 @@ server <- function(input, output, session) {
     dt_table(analysis()$metrics_over_time, page_length = 12)
   }, server = FALSE)
 
+  output$roi_version_switch <- renderUI({
+    result <- analysis()
+    if (!isTRUE(result$gradient_applied)) {
+      return(NULL)
+    }
+
+    tags$div(
+      class = "table-version-switch ds-pill-group",
+      radioButtons(
+        "roi_version",
+        "Version",
+        choices = c("No Gradient" = "base", "Gradient" = "gradient"),
+        selected = "base",
+        inline = TRUE
+      )
+    )
+  })
+
   output$roi_table <- renderDT({
-    dt_table(analysis()$roi_table, page_length = 15)
+    result <- analysis()
+    table_data <- if (isTRUE(result$gradient_applied) && identical(input$roi_version, "gradient")) {
+      result$roi_table_gradient
+    } else {
+      result$roi_table
+    }
+
+    dt_table(table_data, page_length = 15)
   }, server = FALSE)
 
-  output$roi_gradient_table <- renderDT({
-    dt_table(analysis()$roi_table_gradient, page_length = 15)
-  }, server = FALSE)
+  output$full_period_version_switch <- renderUI({
+    result <- analysis()
+    if (!isTRUE(result$gradient_applied)) {
+      return(NULL)
+    }
+
+    tags$div(
+      class = "table-version-switch ds-pill-group",
+      radioButtons(
+        "full_period_version",
+        "Version",
+        choices = c("No Gradient" = "base", "Gradient" = "gradient"),
+        selected = "base",
+        inline = TRUE
+      )
+    )
+  })
 
   output$full_period_table <- renderDT({
-    dt_table(analysis()$full_period_table, page_length = 15)
-  }, server = FALSE)
+    result <- analysis()
+    table_data <- if (isTRUE(result$gradient_applied) && identical(input$full_period_version, "gradient")) {
+      result$full_period_table_gradient
+    } else {
+      result$full_period_table
+    }
 
-  output$full_period_gradient_table <- renderDT({
-    dt_table(analysis()$full_period_table_gradient, page_length = 15)
+    dt_table(table_data, page_length = 15)
   }, server = FALSE)
 
   output$historical_table <- renderDT({
