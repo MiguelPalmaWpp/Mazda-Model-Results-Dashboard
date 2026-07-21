@@ -298,7 +298,8 @@ ui <- fluidPage(
             tabPanel(
               "Overview",
               card("Executive Summary", uiOutput("overview_summary")),
-              card("Model Metrics", DTOutput("overview_metrics"))
+              card("Model Metrics", DTOutput("overview_metrics")),
+              uiOutput("overview_gradient_metrics_card")
             ),
             tabPanel(
               "Model Fit",
@@ -326,7 +327,9 @@ ui <- fluidPage(
             ),
             tabPanel("Metrics Over Time", card("Monthly Metrics", DTOutput("metrics_over_time"))),
             tabPanel("ROI", card("Filtered Period ROI", DTOutput("roi_table"))),
+            tabPanel("ROI with Gradient", card("Filtered Period ROI with Gradient", DTOutput("roi_gradient_table"))),
             tabPanel("Full Period Contribution", card("Full Model Period", DTOutput("full_period_table"))),
+            tabPanel("Full Period Contribution with Gradient", card("Full Model Period with Gradient", DTOutput("full_period_gradient_table"))),
             tabPanel("Historical Contributions", card("Historical Contributions Preview", DTOutput("historical_table"))),
             tabPanel("Pre vs Post", card("Pre vs Post Contribution", DTOutput("pre_vs_post_table"))),
             tabPanel("Diagnostics", card("Diagnostics", verbatimTextOutput("diagnostics")))

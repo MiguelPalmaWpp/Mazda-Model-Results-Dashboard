@@ -39,13 +39,15 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   metrics_over_time <- calculate_metrics_over_time(df)
 
   if (isTRUE(compare_new_period)) {
-    df_med_roi <- df_med %>% filter(Date >= roi_from & Date <= roi_to)
+    df_med_roi <- df_med_original %>% filter(Date >= roi_from & Date <= roi_to)
+    df_med_gradient_roi <- df_med %>% filter(Date >= roi_from & Date <= roi_to)
     df_input_roi <- df_input %>% filter(Date >= roi_from & Date <= roi_to)
     correlation_cutoff <- cutoff_date
     pre_vs_post_table <- build_pre_vs_post_table(df_med, cutoff_date)
     roi_period_label <- paste(as.character(roi_from), "to", as.character(roi_to))
   } else {
-    df_med_roi <- df_med
+    df_med_roi <- df_med_original
+    df_med_gradient_roi <- df_med
     df_input_roi <- df_input
     correlation_cutoff <- NULL
     pre_vs_post_table <- build_pre_vs_post_table(df_med, NULL)
@@ -60,11 +62,49 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   )
 
   full_period_table <- build_roi_table(
-    df_med,
+    df_med_original,
     revenue_param = revenue_per_unit,
     df_input_filtered = df_input,
     df_pct = df_pct
   )
+
+  roi_table_gradient <- if (gradient_applied) {
+    build_roi_table(
+      df_med_gradient_roi,
+      revenue_param = revenue_per_unit,
+      df_input_filtered = df_input_roi,
+      df_pct = NULL
+    )
+  } else {
+    data.frame(Message = "Gradient adjustment was not applied.")
+  }
+
+  full_period_table_gradient <- if (gradient_applied) {
+    build_roi_table(
+      df_med,
+      revenue_param = revenue_per_unit,
+      df_input_filtered = df_input,
+      df_pct = df_pct
+    )
+  } else {
+    data.frame(Message = "Gradient adjustment was not applied.")
+  }
+
+  metrics_gradient_by_granularity <- if (gradient_applied) {
+    calculate_granularity_metrics(df, df_weekly, df_monthly, pred_col = "Pred_Gradient")
+  } else {
+    NULL
+  }
+
+  overview_metrics_gradient <- if (!is.null(metrics_gradient_by_granularity)) {
+    bind_rows(
+      metrics_to_df(metrics_gradient_by_granularity$daily, "Daily"),
+      metrics_to_df(metrics_gradient_by_granularity$weekly, "Weekly"),
+      metrics_to_df(metrics_gradient_by_granularity$monthly, "Monthly")
+    )
+  } else {
+    NULL
+  }
 
   list(
     df = df,
@@ -85,10 +125,13 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
     ),
     correlation = build_correlation_table(df, correlation_cutoff),
     roi_table = roi_table,
+    roi_table_gradient = roi_table_gradient,
     roi_period_label = roi_period_label,
     full_period_table = full_period_table,
+    full_period_table_gradient = full_period_table_gradient,
     historical_table = build_historical_contributions_table(df_med),
     pre_vs_post_table = pre_vs_post_table,
+    overview_metrics_gradient = overview_metrics_gradient,
     compare_new_period = isTRUE(compare_new_period),
     gradient_applied = gradient_applied,
     gradient_message = gradient_message

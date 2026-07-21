@@ -174,6 +174,30 @@ server <- function(input, output, session) {
     metrics_matrix_table(metrics)
   }, server = FALSE)
 
+  output$overview_gradient_metrics_card <- renderUI({
+    result <- analysis()
+    if (!isTRUE(result$gradient_applied)) {
+      return(NULL)
+    }
+
+    card("Model Metrics with Gradient", DTOutput("overview_metrics_gradient"))
+  })
+
+  output$overview_metrics_gradient <- renderDT({
+    result <- analysis()
+    validate(need(isTRUE(result$gradient_applied), "Gradient adjustment was not applied."))
+
+    metrics <- result$overview_metrics_gradient %>%
+      mutate(Value = round(Value, 2)) %>%
+      tidyr::pivot_wider(
+        names_from = Granularity,
+        values_from = Value
+      ) %>%
+      select(Metric, Daily, Weekly, Monthly)
+
+    metrics_matrix_table(metrics)
+  }, server = FALSE)
+
   output$fit_timeseries <- renderPlotly({
     result <- analysis()
     granularity <- input$fit_granularity %||% "Daily"
@@ -194,8 +218,16 @@ server <- function(input, output, session) {
     dt_table(analysis()$roi_table, page_length = 15)
   }, server = FALSE)
 
+  output$roi_gradient_table <- renderDT({
+    dt_table(analysis()$roi_table_gradient, page_length = 15)
+  }, server = FALSE)
+
   output$full_period_table <- renderDT({
     dt_table(analysis()$full_period_table, page_length = 15)
+  }, server = FALSE)
+
+  output$full_period_gradient_table <- renderDT({
+    dt_table(analysis()$full_period_table_gradient, page_length = 15)
   }, server = FALSE)
 
   output$historical_table <- renderDT({
