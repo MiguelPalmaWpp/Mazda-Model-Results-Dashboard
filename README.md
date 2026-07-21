@@ -4,11 +4,22 @@ English-only Shiny application for reviewing Mazda model results, model fit, con
 
 ## Inputs
 
-The app uses one multi-file upload and automatically detects the required files by filename:
+The app uses one multi-file upload and automatically detects the required files by filename.
+
+Legacy format:
 
 - `MFF / Data Input`: CSV or Excel file with `Date`, KPI/Actual, and spend columns.
 - `Contributions`: CSV or Excel file with `Date`, `Pred`, and `Contrib_` columns.
 - `Contribution Percentages`: CSV or Excel file with variable and percentage columns.
+
+Artifacts format:
+
+- `artifacts.zip`: ZIP output from the new model pipeline.
+- Matching `MFF / Data Input`: required when the ZIP uses `row` indexes instead of `Date`.
+
+For artifacts ZIPs, the app expects `predictions.csv`, `contributions.csv`, and
+`contribution_summary.csv`. If future model outputs include `Date` directly in
+`predictions.csv` and `contributions.csv`, the date mapping can be simplified.
 
 Optional:
 

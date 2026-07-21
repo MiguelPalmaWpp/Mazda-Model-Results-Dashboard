@@ -36,19 +36,23 @@ server <- function(input, output, session) {
       )
     }
 
-    ready <- !is.null(files$data_input) && !is.null(files$med_contrib) && !is.null(files$pct_contrib)
+    legacy_ready <- !is.null(files$data_input) && !is.null(files$med_contrib) && !is.null(files$pct_contrib)
+    artifacts_ready <- !is.null(files$artifacts_zip) && !is.null(files$data_input)
+    ready <- legacy_ready || artifacts_ready
 
     tags$div(
       class = "sidebar-file-status",
+      if (!is.null(files$artifacts_zip)) file_row("Artifacts ZIP", files$artifacts_zip),
       file_row("MFF / Data Input", files$data_input),
-      file_row("Contributions", files$med_contrib),
-      file_row("Contribution Percentages", files$pct_contrib),
+      if (is.null(files$artifacts_zip)) file_row("Contributions", files$med_contrib),
+      if (is.null(files$artifacts_zip)) file_row("Contribution Percentages", files$pct_contrib),
       tags$div(
         class = if (ready) "qa-summary qa-summary-ok" else "qa-summary qa-summary-warning",
         tags$div(
           class = "qa-summary-main",
           tags$span(class = "qa-summary-text",
                     if (ready) "All required files are loaded. Click Run Analysis."
+                    else if (!is.null(files$artifacts_zip)) "Upload the matching MFF / Data Input file with artifacts.zip."
                     else "Upload all three required files before running the analysis.")
         )
       )
@@ -58,6 +62,17 @@ server <- function(input, output, session) {
   data_loaded <- eventReactive(input$run_analysis, {
     tryCatch({
       files <- selected_files()
+      if (!is.null(files$artifacts_zip)) {
+        validate(
+          need(!is.null(files$data_input), "Upload the matching MFF / Data Input file with artifacts.zip.")
+        )
+
+        return(load_model_data_from_artifacts(
+          artifacts_zip = files$artifacts_zip,
+          mff_path = materialize_upload(files$data_input, "MFF / Data Input")
+        ))
+      }
+
       validate(
         need(!is.null(files$data_input), "Upload the MFF / Data Input file."),
         need(!is.null(files$med_contrib), "Upload the Contributions file."),

@@ -111,6 +111,118 @@ read_pct_contribution <- function(path) {
     filter(!is.na(Variable), Variable != "")
 }
 
+extract_uploaded_zip <- function(zip_file_row, label = "Artifacts ZIP") {
+  zip_path <- materialize_upload(zip_file_row, label)
+  extract_dir <- file.path(tempdir(), paste0("mazda_model_results_zip_", sample.int(999999, 1)))
+  dir.create(extract_dir, recursive = TRUE, showWarnings = FALSE)
+  utils::unzip(zip_path, exdir = extract_dir)
+  normalizePath(extract_dir, winslash = "/", mustWork = TRUE)
+}
+
+find_artifact_file <- function(extract_dir, filename) {
+  matches <- list.files(extract_dir, pattern = paste0("^", filename, "$"), recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
+  if (length(matches) == 0) {
+    return(NULL)
+  }
+  normalizePath(matches[1], winslash = "/", mustWork = TRUE)
+}
+
+clean_artifact_variable <- function(variable) {
+  variable <- sub("^media:", "", variable)
+  variable <- sub("^external:", "", variable)
+  variable <- sub("^trend:", "", variable)
+  variable <- gsub("[^A-Za-z0-9_]+", "_", variable)
+  gsub("_+", "_", variable)
+}
+
+load_model_data_from_artifacts <- function(artifacts_zip, mff_path = NULL) {
+  extract_dir <- extract_uploaded_zip(artifacts_zip, "Artifacts ZIP")
+  predictions_path <- find_artifact_file(extract_dir, "predictions.csv")
+  contributions_path <- find_artifact_file(extract_dir, "contributions.csv")
+  summary_path <- find_artifact_file(extract_dir, "contribution_summary.csv")
+
+  if (is.null(predictions_path) || is.null(contributions_path) || is.null(summary_path)) {
+    stop(
+      "Artifacts ZIP must include predictions.csv, contributions.csv, and contribution_summary.csv."
+    )
+  }
+
+  if (is.null(mff_path) || !nzchar(mff_path)) {
+    stop(
+      "Artifacts ZIP outputs use row numbers instead of dates. Upload the original MFF / Data Input file ",
+      "together with artifacts.zip, or ask the model pipeline to include a Date column in predictions.csv ",
+      "and contributions.csv."
+    )
+  }
+
+  df_mff <- read_uploaded_table(mff_path) %>%
+    clean_date_table("MFF / Data Input")
+  df_pred <- readr::read_csv(predictions_path, show_col_types = FALSE, progress = FALSE)
+  df_contrib_raw <- readr::read_csv(contributions_path, show_col_types = FALSE, progress = FALSE)
+  df_summary <- readr::read_csv(summary_path, show_col_types = FALSE, progress = FALSE)
+
+  required_pred <- c("row", "observed", "fitted")
+  if (!all(required_pred %in% colnames(df_pred))) {
+    stop("predictions.csv must include row, observed, and fitted columns.")
+  }
+  if (!"row" %in% colnames(df_contrib_raw)) {
+    stop("contributions.csv must include a row column.")
+  }
+  if (max(df_pred$row, na.rm = TRUE) > nrow(df_mff) || min(df_pred$row, na.rm = TRUE) < 1) {
+    stop(
+      "The row indexes in predictions.csv do not match the uploaded MFF row count. ",
+      "Add Date directly to predictions.csv and contributions.csv, or upload the matching MFF used by the model."
+    )
+  }
+
+  date_lookup <- df_mff %>%
+    mutate(.model_row = row_number()) %>%
+    select(.model_row, Date, everything())
+
+  df_actual <- df_pred %>%
+    transmute(.model_row = as.integer(row), Actual = as.numeric(observed)) %>%
+    left_join(date_lookup, by = ".model_row") %>%
+    select(Date, Actual, everything(), -.model_row)
+
+  contrib_cols_raw <- setdiff(colnames(df_contrib_raw), "row")
+  contrib_names <- paste0("Contrib_", clean_artifact_variable(contrib_cols_raw))
+
+  df_med <- df_contrib_raw %>%
+    mutate(.model_row = as.integer(row)) %>%
+    select(.model_row, all_of(contrib_cols_raw)) %>%
+    left_join(df_pred %>% transmute(.model_row = as.integer(row), Pred = as.numeric(fitted)), by = ".model_row") %>%
+    left_join(date_lookup %>% select(.model_row, Date), by = ".model_row") %>%
+    select(Date, Pred, all_of(contrib_cols_raw))
+  colnames(df_med)[match(contrib_cols_raw, colnames(df_med))] <- contrib_names
+
+  df_pct <- df_summary %>%
+    filter(!is.na(label), !is.na(share_total)) %>%
+    transmute(
+      Variable = paste0("Contrib_", clean_artifact_variable(label)),
+      Pct = as.numeric(share_total) * 100
+    )
+
+  df <- df_actual %>%
+    select(Date, Actual) %>%
+    inner_join(df_med %>% select(Date, Pred), by = "Date") %>%
+    arrange(Date)
+
+  list(
+    df = df,
+    df_med = df_med,
+    df_pct = df_pct,
+    df_input = df_actual,
+    diagnostics = list(
+      input_format = "Artifacts ZIP + MFF",
+      kpi_column = "observed",
+      pred_column = "fitted",
+      spend_columns = setdiff(colnames(df_actual), c("Date", "Actual")),
+      contribution_columns = contrib_names,
+      date_range = range(df$Date, na.rm = TRUE)
+    )
+  )
+}
+
 load_model_data <- function(data_input_path, med_contrib_path, pct_contrib_path) {
   df_actual <- read_uploaded_table(data_input_path) %>%
     clean_date_table("MFF / Data Input")
@@ -180,7 +292,7 @@ load_model_data <- function(data_input_path, med_contrib_path, pct_contrib_path)
 
 detect_uploaded_files <- function(files) {
   if (is.null(files) || nrow(files) == 0) {
-    return(list(data_input = NULL, med_contrib = NULL, pct_contrib = NULL, diagnostics = character()))
+    return(list(data_input = NULL, med_contrib = NULL, pct_contrib = NULL, artifacts_zip = NULL, diagnostics = character()))
   }
 
   names_lower <- tolower(files$name)
@@ -192,6 +304,7 @@ detect_uploaded_files <- function(files) {
   pct <- pick("pct|percent|percentage")
   med <- pick("med_contrib|contribution|contrib")
   data_input <- pick("data_input|mff|input")
+  artifacts_zip <- pick("artifacts.*\\.zip$|\\.zip$")
 
   if (!is.null(pct) && !is.null(med) && pct$name == med$name) {
     remaining <- files[files$name != pct$name, , drop = FALSE]
@@ -202,8 +315,9 @@ detect_uploaded_files <- function(files) {
   diagnostics <- c(
     paste("MFF / Data Input:", if (is.null(data_input)) "not detected" else data_input$name),
     paste("Contributions:", if (is.null(med)) "not detected" else med$name),
-    paste("Contribution Percentages:", if (is.null(pct)) "not detected" else pct$name)
+    paste("Contribution Percentages:", if (is.null(pct)) "not detected" else pct$name),
+    paste("Artifacts ZIP:", if (is.null(artifacts_zip)) "not detected" else artifacts_zip$name)
   )
 
-  list(data_input = data_input, med_contrib = med, pct_contrib = pct, diagnostics = diagnostics)
+  list(data_input = data_input, med_contrib = med, pct_contrib = pct, artifacts_zip = artifacts_zip, diagnostics = diagnostics)
 }
