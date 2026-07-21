@@ -708,6 +708,7 @@ build_roi_table <- function(df_med_input, revenue_param,
   # ── Spend lookup from data_input ──────────────────────────────────────────
   # Spend column names in data_input = var_clean (contrib col without Contrib_ prefix)
   spend_lookup <- setNames(numeric(0), character(0))
+  spend_lookup_normalized <- setNames(numeric(0), character(0))
   
   if (!is.null(df_input_filtered)) {
     spend_cols <- df_input_filtered %>%
@@ -722,12 +723,18 @@ build_roi_table <- function(df_med_input, revenue_param,
         pivot_longer(everything(), names_to = "spend_col", values_to = "Spend_Total")
       
       spend_lookup <- setNames(spend_sums$Spend_Total, spend_sums$spend_col)
+      spend_lookup_normalized <- setNames(
+        spend_sums$Spend_Total,
+        gsub("[^a-z0-9]+", "_", tolower(spend_sums$spend_col))
+      )
       
       # Diagnostics
       var_clean_vals <- sub("^Contrib_", "", contrib_cols)
       var_clean_vals <- var_clean_vals[var_clean_vals != "Base"]
-      n_match   <- sum(var_clean_vals %in% names(spend_lookup))
-      unmatched <- var_clean_vals[!var_clean_vals %in% names(spend_lookup)]
+      var_normalized <- gsub("[^a-z0-9]+", "_", tolower(var_clean_vals))
+      is_matched <- var_clean_vals %in% names(spend_lookup) | var_normalized %in% names(spend_lookup_normalized)
+      n_match   <- sum(is_matched)
+      unmatched <- var_clean_vals[!is_matched]
       
       cat("  Spend matched:", n_match, "/ Total:", length(var_clean_vals), "\n")
       if (length(unmatched) > 0)
@@ -756,9 +763,10 @@ build_roi_table <- function(df_med_input, revenue_param,
       
       # Spend: matched from data_input by var_clean name; NA if no match
       Spend = if (length(spend_lookup) > 0) {
-        ifelse(Channel %in% REVENUE_CHANNELS,
-               as.numeric(spend_lookup[var_clean]),
-               NA_real_)
+        exact_spend <- as.numeric(spend_lookup[var_clean])
+        normalized_spend <- as.numeric(spend_lookup_normalized[gsub("[^a-z0-9]+", "_", tolower(var_clean))])
+        matched_spend <- ifelse(is.na(exact_spend), normalized_spend, exact_spend)
+        ifelse(Channel %in% REVENUE_CHANNELS, matched_spend, NA_real_)
       } else {
         NA_real_
       },

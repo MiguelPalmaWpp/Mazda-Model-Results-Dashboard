@@ -165,6 +165,15 @@ clean_artifact_variable <- function(variable) {
   gsub("_+", "_", variable)
 }
 
+artifact_match_variable <- function(variable) {
+  trimws(sub("^[^:]+:", "", variable))
+}
+
+make_contribution_names <- function(raw_names) {
+  base_names <- paste0("Contrib_", artifact_match_variable(raw_names))
+  make.unique(base_names, sep = "_")
+}
+
 detect_kpi_column <- function(df, file_label = "MFF / Data Input") {
   candidates <- setdiff(colnames(df), c("Date", "Row"))
   kpi_cols <- candidates[grepl("KPI", candidates, ignore.case = TRUE)]
@@ -248,10 +257,14 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
     select(Date, Actual, everything(), -Row, -any_of(kpi_col[!is.na(kpi_col)]))
 
   contrib_cols_raw <- setdiff(colnames(df_contrib_raw), "row")
-  contrib_names <- paste0("Contrib_", clean_artifact_variable(contrib_cols_raw))
+  contrib_names <- make_contribution_names(contrib_cols_raw)
   contrib_clean <- sub("^Contrib_", "", contrib_names)
   spend_columns <- setdiff(colnames(df_mff), mff_non_spend_cols)
-  spend_match_count <- sum(contrib_clean %in% spend_columns)
+  spend_match_count <- sum(
+    contrib_clean %in% spend_columns |
+      gsub("[^a-z0-9]+", "_", tolower(contrib_clean)) %in%
+        gsub("[^a-z0-9]+", "_", tolower(spend_columns))
+  )
 
   df_med <- df_contrib_raw %>%
     mutate(Row = as.integer(row)) %>%
@@ -269,7 +282,7 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
     df_pct <- df_summary %>%
       filter(!is.na(label), !is.na(share_total)) %>%
       transmute(
-        Variable = paste0("Contrib_", clean_artifact_variable(label)),
+        Variable = make_contribution_names(label),
         Pct = as.numeric(share_total) * 100
       )
     summary_used <- TRUE
