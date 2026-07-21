@@ -12,14 +12,16 @@ Legacy format:
 - `Contributions`: CSV or Excel file with `Date`, `Pred`, and `Contrib_` columns.
 - `Contribution Percentages`: CSV or Excel file with variable and percentage columns.
 
-Artifacts format:
+New model output format:
 
-- `artifacts.zip`: ZIP output from the new model pipeline.
-- Matching `MFF / Data Input`: required when the ZIP uses `row` indexes instead of `Date`.
+- `MFF / Data Input`: CSV or Excel file with `Date`, KPI/Actual, and spend columns.
+- `predictions.csv`: CSV file with `row`, `observed`, and `fitted`.
+- `contributions.csv`: CSV file with `row` and model contribution columns.
+- `contribution_summary.csv`: optional CSV file with `label` and `share_total`.
 
-For artifacts ZIPs, the app expects `predictions.csv`, `contributions.csv`, and
-`contribution_summary.csv`. If future model outputs include `Date` directly in
-`predictions.csv` and `contributions.csv`, the date mapping can be simplified.
+For the new format, Shiny creates an internal `Row` from the uploaded MFF row order
+and joins it to the model output `row` column. The MFF must be the exact file used by
+the model run.
 
 Optional:
 

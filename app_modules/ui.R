@@ -257,9 +257,9 @@ ui <- fluidPage(
           "Input Files",
           fileInput(
             "all_files",
-            "Upload MFF plus model outputs",
+            "Upload MFF and model output files",
             multiple = TRUE,
-            accept = c(".csv", ".xlsx", ".xlsm", ".xls", ".zip")
+            accept = c(".csv", ".xlsx", ".xlsm", ".xls")
           ),
           uiOutput("file_status"),
           class = "sidebar-card-inputs"
