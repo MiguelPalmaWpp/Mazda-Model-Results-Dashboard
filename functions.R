@@ -151,42 +151,67 @@ load_data_from_zip <- function(zip_file) {
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. METRIC FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════
-calc_mae     <- function(a, p) mean(abs(a - p), na.rm = TRUE)
-calc_rmse    <- function(a, p) sqrt(mean((a - p)^2, na.rm = TRUE))
-calc_mape    <- function(a, p) { m <- a != 0; if (!any(m)) NA else mean(abs((a[m]-p[m])/a[m]))*100 }
-calc_smape   <- function(a, p) { d <- (abs(a)+abs(p))/2; m <- d != 0; if (!any(m)) NA else mean(abs(a[m]-p[m])/d[m])*100 }
-calc_r2      <- function(a, p) { ss_r <- sum((a-p)^2); ss_t <- sum((a-mean(a))^2); if (ss_t==0) NA else 1-(ss_r/ss_t) }
-calc_pearson <- function(a, p) { if (length(a) < 2) NA else cor(a, p, use = "complete.obs") }
-calc_mase    <- function(a, p) { mae_m <- mean(abs(a-p)); mae_n <- mean(abs(diff(a))); if (mae_n==0) NA else mae_m/mae_n }
+prepare_metric_vectors <- function(df, actual_col = "Actual", pred_col = "Pred") {
+  if (!actual_col %in% colnames(df)) {
+    stop("Metrics require an Actual column.")
+  }
+  if (!pred_col %in% colnames(df)) {
+    stop("Metrics require a prediction column: ", pred_col)
+  }
 
-calculate_all_metrics <- function(df) {
+  metric_df <- df %>%
+    transmute(
+      Actual = suppressWarnings(as.numeric(.data[[actual_col]])),
+      Pred = suppressWarnings(as.numeric(.data[[pred_col]]))
+    ) %>%
+    filter(is.finite(Actual), is.finite(Pred))
+
+  list(actual = metric_df$Actual, pred = metric_df$Pred)
+}
+
+calc_mae     <- function(a, p) { if (length(a) == 0) NA_real_ else mean(abs(a - p), na.rm = TRUE) }
+calc_rmse    <- function(a, p) { if (length(a) == 0) NA_real_ else sqrt(mean((a - p)^2, na.rm = TRUE)) }
+calc_mape    <- function(a, p) { m <- a != 0; if (!any(m)) NA_real_ else mean(abs((a[m]-p[m])/a[m]))*100 }
+calc_smape   <- function(a, p) { d <- (abs(a)+abs(p))/2; m <- d != 0; if (!any(m)) NA_real_ else mean(abs(a[m]-p[m])/d[m])*100 }
+calc_r2      <- function(a, p) { if (length(a) == 0) return(NA_real_); ss_r <- sum((a-p)^2); ss_t <- sum((a-mean(a))^2); if (ss_t==0) NA_real_ else 1-(ss_r/ss_t) }
+calc_pearson <- function(a, p) { if (length(a) < 2) NA_real_ else cor(a, p, use = "complete.obs") }
+calc_mase    <- function(a, p) { if (length(a) < 2) return(NA_real_); mae_m <- mean(abs(a-p)); mae_n <- mean(abs(diff(a))); if (mae_n==0) NA_real_ else mae_m/mae_n }
+
+calculate_all_metrics <- function(df, actual_col = "Actual", pred_col = "Pred") {
+  vectors <- prepare_metric_vectors(df, actual_col = actual_col, pred_col = pred_col)
+  actual <- vectors$actual
+  pred <- vectors$pred
+
   list(
-    MAE         = calc_mae(df$Actual,      df$Pred),
-    RMSE        = calc_rmse(df$Actual,     df$Pred),
-    `MAPE (%)`  = calc_mape(df$Actual,    df$Pred),
-    `SMAPE (%)` = calc_smape(df$Actual,   df$Pred),
-    R2          = calc_r2(df$Actual,      df$Pred),
-    `Pearson R` = calc_pearson(df$Actual, df$Pred),
-    MASE        = calc_mase(df$Actual,    df$Pred)
+    MAE         = calc_mae(actual, pred),
+    RMSE        = calc_rmse(actual, pred),
+    `MAPE (%)`  = calc_mape(actual, pred),
+    `SMAPE (%)` = calc_smape(actual, pred),
+    R2          = calc_r2(actual, pred),
+    `Pearson R` = calc_pearson(actual, pred),
+    MASE        = calc_mase(actual, pred)
   )
 }
 
-calculate_metrics_over_time <- function(df) {
+calculate_metrics_over_time <- function(df, pred_col = "Pred") {
   df %>%
     mutate(Period = format(Date, "%Y-%m")) %>%
     group_by(Period) %>%
     filter(n() >= 2) %>%
-    summarise(
-      N_Days      = n(),
-      MAE         = calc_mae(Actual,      Pred),
-      RMSE        = calc_rmse(Actual,     Pred),
-      `MAPE (%)`  = calc_mape(Actual,    Pred),
-      `SMAPE (%)` = calc_smape(Actual,   Pred),
-      R2          = calc_r2(Actual,      Pred),
-      `Pearson R` = calc_pearson(Actual, Pred),
-      MASE        = calc_mase(Actual,    Pred),
-      .groups = "drop"
-    )
+    group_modify(~ {
+      metrics <- calculate_all_metrics(.x, pred_col = pred_col)
+      tibble(
+        N_Days = nrow(.x),
+        MAE = metrics$MAE,
+        RMSE = metrics$RMSE,
+        `MAPE (%)` = metrics$`MAPE (%)`,
+        `SMAPE (%)` = metrics$`SMAPE (%)`,
+        R2 = metrics$R2,
+        `Pearson R` = metrics$`Pearson R`,
+        MASE = metrics$MASE
+      )
+    }) %>%
+    ungroup()
 }
 
 # aggregate_data actualizado para propagar Pred_Gradient si existe

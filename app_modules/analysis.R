@@ -1,3 +1,11 @@
+calculate_granularity_metrics <- function(df_daily, df_weekly, df_monthly, pred_col = "Pred") {
+  list(
+    daily = calculate_all_metrics(df_daily, pred_col = pred_col),
+    weekly = calculate_all_metrics(df_weekly, pred_col = pred_col),
+    monthly = calculate_all_metrics(df_monthly, pred_col = pred_col)
+  )
+}
+
 build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregation_method,
                            roi_from, roi_to, compare_new_period,
                            use_gradient, gradient_path, gradient_sheet) {
@@ -24,9 +32,10 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   df_weekly <- aggregate_data(df, "week", aggregation_method)
   df_monthly <- aggregate_data(df, "month", aggregation_method)
 
-  metrics_daily <- calculate_all_metrics(df)
-  metrics_weekly <- calculate_all_metrics(df_weekly)
-  metrics_monthly <- calculate_all_metrics(df_monthly)
+  metrics_by_granularity <- calculate_granularity_metrics(df, df_weekly, df_monthly)
+  metrics_daily <- metrics_by_granularity$daily
+  metrics_weekly <- metrics_by_granularity$weekly
+  metrics_monthly <- metrics_by_granularity$monthly
   metrics_over_time <- calculate_metrics_over_time(df)
 
   if (isTRUE(compare_new_period)) {

@@ -99,7 +99,7 @@ build_fit_timeseries_plot <- function(df, title) {
   metrics <- calculate_all_metrics(df)
   has_gradient <- "Pred_Gradient" %in% colnames(df)
   metrics_gradient <- if (has_gradient) {
-    calculate_all_metrics(df %>% mutate(Pred = Pred_Gradient))
+    calculate_all_metrics(df, pred_col = "Pred_Gradient")
   } else {
     NULL
   }
@@ -228,7 +228,7 @@ build_fit_scatter_plot <- function(df, title) {
 
   metrics <- calculate_all_metrics(df_plot)
   metrics_gradient <- if (has_gradient) {
-    calculate_all_metrics(df_plot %>% mutate(Pred = Pred_Gradient))
+    calculate_all_metrics(df_plot, pred_col = "Pred_Gradient")
   } else {
     NULL
   }
