@@ -172,7 +172,7 @@ server <- function(input, output, session) {
       select(Metric, Daily, Weekly, Monthly)
 
     metrics_matrix_table(metrics)
-  })
+  }, server = FALSE)
 
   output$fit_timeseries <- renderPlotly({
     result <- analysis()
@@ -188,23 +188,23 @@ server <- function(input, output, session) {
 
   output$metrics_over_time <- renderDT({
     dt_table(analysis()$metrics_over_time, page_length = 12)
-  })
+  }, server = FALSE)
 
   output$roi_table <- renderDT({
     dt_table(analysis()$roi_table, page_length = 15)
-  })
+  }, server = FALSE)
 
   output$full_period_table <- renderDT({
     dt_table(analysis()$full_period_table, page_length = 15)
-  })
+  }, server = FALSE)
 
   output$historical_table <- renderDT({
     dt_table(head(analysis()$historical_table, 100), page_length = 10)
-  })
+  }, server = FALSE)
 
   output$pre_vs_post_table <- renderDT({
     dt_table(analysis()$pre_vs_post_table, page_length = 15)
-  })
+  }, server = FALSE)
 
   output$diagnostics <- renderText({
     files <- selected_files()
