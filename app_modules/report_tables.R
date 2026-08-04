@@ -64,15 +64,22 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
   if (length(contrib_cols) == 0) {
     stop("No Contrib_ columns found for Long Format export.")
   }
+  
+  variable_lookup <- tibble(
+    contrib_col = contrib_cols,
+    variable = trimws(sub("^Contrib_", "", contrib_cols)),
+    variable_key = normalize_mapping_key(variable)
+  )
 
   df_contrib_long <- df_med_original %>%
     select(Date, all_of(contrib_cols)) %>%
     pivot_longer(
       cols = -Date,
-      names_to = "variable",
+      names_to = "contrib_col",
       values_to = "contribution"
     ) %>%
-    mutate(variable = trimws(sub("^Contrib_", "", variable)))
+    left_join(variable_lookup, by = "contrib_col") %>%
+    select(Date, variable, contribution)
 
   if (!is.null(df_med_gradient)) {
     gradient_cols <- intersect(contrib_cols, colnames(df_med_gradient))
@@ -80,39 +87,63 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
       select(Date, all_of(gradient_cols)) %>%
       pivot_longer(
         cols = -Date,
-        names_to = "variable",
+        names_to = "contrib_col",
         values_to = "contribution_gradient"
       ) %>%
-      mutate(variable = trimws(sub("^Contrib_", "", variable)))
+      left_join(variable_lookup, by = "contrib_col") %>%
+      select(Date, variable, contribution_gradient)
   } else {
-    df_gradient_long <- df_contrib_long %>%
-      transmute(Date, variable, contribution_gradient = contribution)
+    df_gradient_long <- NULL
   }
 
-  spend_cols <- setdiff(colnames(df_input), c("Date", "Actual"))
-  spend_cols <- intersect(spend_cols, unique(df_contrib_long$variable))
+  spend_cols <- setdiff(colnames(df_input), c("Date", "Actual", "Row"))
+  spend_cols <- spend_cols[is_spend_column(spend_cols)]
+  spend_lookup <- setNames(spend_cols, spend_cols)
+  spend_lookup_normalized <- setNames(spend_cols, normalize_mapping_key(spend_cols))
+  spend_match <- variable_lookup %>%
+    mutate(
+      spend_col = ifelse(
+        variable %in% names(spend_lookup),
+        spend_lookup[variable],
+        spend_lookup_normalized[variable_key]
+      )
+    ) %>%
+    filter(!is.na(spend_col), spend_col %in% colnames(df_input)) %>%
+    distinct(variable, spend_col)
 
-  if (length(spend_cols) > 0) {
+  if (nrow(spend_match) > 0) {
     df_spend_long <- df_input %>%
-      select(Date, all_of(spend_cols)) %>%
+      select(Date, all_of(unique(spend_match$spend_col))) %>%
       pivot_longer(
         cols = -Date,
-        names_to = "variable",
+        names_to = "spend_col",
         values_to = "spend"
-      )
+      ) %>%
+      inner_join(spend_match, by = "spend_col") %>%
+      select(Date, variable, spend)
   } else {
-    df_spend_long <- df_contrib_long %>%
-      distinct(Date, variable) %>%
-      mutate(spend = NA_real_)
+    df_spend_long <- NULL
   }
 
-  df_contrib_long %>%
-    full_join(df_spend_long, by = c("Date", "variable")) %>%
-    left_join(df_gradient_long, by = c("Date", "variable")) %>%
+  df_long <- df_contrib_long
+  
+  if (!is.null(df_spend_long)) {
+    df_long <- df_long %>% left_join(df_spend_long, by = c("Date", "variable"))
+  } else {
+    df_long <- df_long %>% mutate(spend = NA_real_)
+  }
+  
+  if (!is.null(df_gradient_long)) {
+    df_long <- df_long %>% left_join(df_gradient_long, by = c("Date", "variable"))
+  } else {
+    df_long <- df_long %>% mutate(contribution_gradient = contribution)
+  }
+  
+  df_long %>%
     mutate(
       contribution = replace_na(contribution, 0),
       spend = replace_na(spend, 0),
-      contribution_gradient = replace_na(contribution_gradient, contribution)
+      contribution_gradient = coalesce(contribution_gradient, contribution)
     ) %>%
     select(Date, variable, contribution, spend, contribution_gradient) %>%
     arrange(Date, variable) %>%
@@ -160,15 +191,19 @@ build_pre_vs_post_table <- function(df_med, cutoff_date) {
       Category = sapply(mapping, `[[`, "category"),
       Sub_Category = sapply(mapping, `[[`, "sub_category"),
       Funnel = sapply(mapping, `[[`, "funnel"),
-      sort_key = coalesce(as.numeric(sort_order_map[Sub_Category]), 11L)
+      sort_key = ifelse(
+        Category == "Base",
+        sort_order_map[["Base"]],
+        coalesce(as.numeric(sort_order_map[Sub_Category]), sort_order_map[["Base"]] - 1)
+      )
     ) %>%
     arrange(sort_key) %>%
     select(
       Variable = var_clean,
-      Channel,
       Category,
       `Sub-Category` = Sub_Category,
       Funnel,
+      Channel,
       `Pre Units` = Pre_Units,
       `Post Units` = Post_Units
     )

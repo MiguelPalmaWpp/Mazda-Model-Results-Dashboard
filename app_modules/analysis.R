@@ -6,9 +6,10 @@ calculate_granularity_metrics <- function(df_daily, df_weekly, df_monthly, pred_
   )
 }
 
-build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregation_method,
-                           roi_from, roi_to, compare_new_period,
-                           use_gradient, gradient_path, gradient_sheet) {
+build_analysis <- function(data_loaded, cutoff_date, aggregation_method,
+                            roi_from, roi_to, compare_new_period,
+                            use_gradient, gradient_path, gradient_sheet,
+                            cftp_path, cftp_sheet, cftp_nameplate) {
   df <- data_loaded$df
   df_med <- data_loaded$df_med
   df_med_original <- df_med
@@ -16,6 +17,11 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   df_input <- data_loaded$df_input
   gradient_applied <- FALSE
   gradient_message <- "Gradient adjustment was not applied."
+  cftp_data <- load_cftp(cftp_path, sheet = cftp_sheet, nameplate = cftp_nameplate)
+  cftp_message <- paste0(
+    "CFTP loaded for ", cftp_nameplate,
+    " (", length(unique(cftp_data$Month)), " months)"
+  )
 
   if (isTRUE(use_gradient) && !is.null(gradient_path) && nzchar(gradient_path)) {
     df_gradient <- load_gradient(gradient_path, sheet = gradient_sheet)
@@ -53,17 +59,26 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
     pre_vs_post_table <- build_pre_vs_post_table(df_med, NULL)
     roi_period_label <- "Full available period"
   }
+  
+  cftp_missing_months <- missing_cftp_months(df_med_roi, cftp_data)
+  if(length(cftp_missing_months) > 0) {
+    cftp_message <- paste0(
+      cftp_message,
+      "; missing ROI months: ",
+      paste(cftp_missing_months, collapse = ", ")
+    )
+  }
 
   roi_table <- build_roi_table(
     df_med_roi,
-    revenue_param = revenue_per_unit,
+    cftp_data = cftp_data,
     df_input_filtered = df_input_roi,
     df_pct = NULL
   )
 
   full_period_table <- build_roi_table(
     df_med_original,
-    revenue_param = revenue_per_unit,
+    cftp_data = cftp_data,
     df_input_filtered = df_input,
     df_pct = df_pct
   )
@@ -71,7 +86,7 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   roi_table_gradient <- if (gradient_applied) {
     build_roi_table(
       df_med_gradient_roi,
-      revenue_param = revenue_per_unit,
+      cftp_data = cftp_data,
       df_input_filtered = df_input_roi,
       df_pct = NULL
     )
@@ -82,7 +97,7 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   full_period_table_gradient <- if (gradient_applied) {
     build_roi_table(
       df_med,
-      revenue_param = revenue_per_unit,
+      cftp_data = cftp_data,
       df_input_filtered = df_input,
       df_pct = df_pct
     )
@@ -112,6 +127,10 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
     df_med_original = df_med_original,
     df_pct = df_pct,
     df_input = df_input,
+    cftp_data = cftp_data,
+    cftp_nameplate = cftp_nameplate,
+    cftp_message = cftp_message,
+    cftp_missing_months = cftp_missing_months,
     df_weekly = df_weekly,
     df_monthly = df_monthly,
     metrics_daily = metrics_daily,
@@ -130,6 +149,11 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
     full_period_table = full_period_table,
     full_period_table_gradient = full_period_table_gradient,
     historical_table = build_historical_contributions_table(df_med),
+    long_format_table = build_long_format_table(
+      df_med_original,
+      df_input,
+      if (isTRUE(gradient_applied)) df_med else NULL
+    ),
     pre_vs_post_table = pre_vs_post_table,
     overview_metrics_gradient = overview_metrics_gradient,
     compare_new_period = isTRUE(compare_new_period),
@@ -138,7 +162,7 @@ build_analysis <- function(data_loaded, cutoff_date, revenue_per_unit, aggregati
   )
 }
 
-build_excel_report <- function(analysis, cutoff_date, roi_from, roi_to, revenue_per_unit) {
+build_excel_report <- function(analysis, cutoff_date, roi_from, roi_to) {
   wb <- createWorkbook()
 
   add_summary_sheet(
@@ -156,35 +180,19 @@ build_excel_report <- function(analysis, cutoff_date, roi_from, roi_to, revenue_
   write_granularity_sheet(wb, "Weekly", analysis$metrics_weekly, analysis$df_weekly)
   write_granularity_sheet(wb, "Monthly", analysis$metrics_monthly, analysis$df_monthly)
 
-  if (isTRUE(analysis$compare_new_period)) {
-    add_roi_sheet(
-      wb,
-      df_med = analysis$df_med,
-      df_input = analysis$df_input,
-      contrib_date_from = roi_from,
-      contrib_date_to = roi_to,
-      revenue_param = revenue_per_unit
-    )
+  roi_export_table <- if (isTRUE(analysis$gradient_applied)) {
+    analysis$roi_table_gradient
   } else {
-    write_roi_sheet(
-      wb,
-      "ROI",
-      build_roi_table(
-        analysis$df_med,
-        revenue_param = revenue_per_unit,
-        df_input_filtered = analysis$df_input,
-        df_pct = NULL
-      )
-    )
+    analysis$roi_table
   }
+  write_roi_sheet(wb, "ROI", roi_export_table)
 
-  add_full_period_contrib_sheet(
-    wb,
-    df_med = analysis$df_med,
-    df_pct = analysis$df_pct,
-    df_input = analysis$df_input,
-    revenue_param = revenue_per_unit
-  )
+  full_period_export_table <- if (isTRUE(analysis$gradient_applied)) {
+    analysis$full_period_table_gradient
+  } else {
+    analysis$full_period_table
+  }
+  write_roi_sheet(wb, "Full Period Contribution", full_period_export_table)
 
   add_historical_contrib_sheet(wb, df_med = analysis$df_med)
   if (isTRUE(analysis$compare_new_period) &&

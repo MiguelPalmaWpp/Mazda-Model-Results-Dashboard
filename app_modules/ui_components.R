@@ -6,6 +6,35 @@ card <- function(title, ..., class = NULL) {
   )
 }
 
+step_title <- function(step, title) {
+  tags$div(
+    class = "sidebar-step-title",
+    tags$span(class = "sidebar-step-number", step),
+    tags$span(title)
+  )
+}
+
+roi_method_panel <- function() {
+  tags$div(
+    class = "roi-method-panel",
+    tags$div(
+      class = "roi-method-item",
+      tags$span(class = "roi-method-kicker", "Revenue"),
+      tags$span("Positive daily contribution units x monthly AVG_CFTP")
+    ),
+    tags$div(
+      class = "roi-method-item",
+      tags$span(class = "roi-method-kicker", "Spend"),
+      tags$span("Matched only from real spend columns in the MFF / Data Input")
+    ),
+    tags$div(
+      class = "roi-method-item",
+      tags$span(class = "roi-method-kicker", "ROI"),
+      tags$span("Revenue / Spend; rows with negative total units stay blank")
+    )
+  )
+}
+
 dt_table <- function(data, page_length = 10, scroll_x = TRUE) {
   data <- round_numeric_columns(data, 2)
   numeric_cols <- unname(which(vapply(data, is.numeric, logical(1))))

@@ -2,6 +2,8 @@
 
 English-only Shiny application for reviewing Mazda model results, model fit, contribution, ROI, and report exports.
 
+For step-by-step app usage, see [USER_MANUAL.md](USER_MANUAL.md).
+
 ## Inputs
 
 The app uses one multi-file upload and automatically detects the required files by filename.
@@ -30,7 +32,6 @@ Optional:
 ## Outputs
 
 - Excel model results report.
-- Correlation CSV.
 - Long Format CSV.
 - Interactive model-fit charts.
 - DT tables for metrics, ROI, contribution, diagnostics, and previews.
@@ -64,6 +65,8 @@ http://127.0.0.1:3838
 |-- app_modules/
 |   |-- config.R
 |   |-- data_loading.R
+|   |-- cftp.R
+|   |-- roi_engine.R
 |   |-- model_fit_plots.R
 |   |-- report_tables.R
 |   |-- analysis.R
@@ -88,6 +91,8 @@ http://127.0.0.1:3838
 - `functions.R`: reusable Excel, ROI, gradient, and legacy model report helpers.
 - `app_modules/config.R`: constants and app configuration.
 - `app_modules/data_loading.R`: upload parsing, file detection, and model input loading.
+- `app_modules/cftp.R`: Consumer Facing Transaction Price AVG loading, validation, diagnostics, and revenue matching.
+- `app_modules/roi_engine.R`: ROI table construction and ROI workbook sheet writers.
 - `app_modules/model_fit_plots.R`: Plotly and ggplot model-fit charts.
 - `app_modules/report_tables.R`: DT tables and app report table builders.
 - `app_modules/analysis.R`: main analysis orchestration and workbook builder.

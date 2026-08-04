@@ -321,6 +321,149 @@ build_fit_scatter_plot <- function(df, title) {
     plotly_model_layout(top_margin = if (has_gradient) 62 else 38, show_legend = has_gradient)
 }
 
+build_error_behavior_plot <- function(df, title) {
+  has_gradient <- "Pred_Gradient" %in% colnames(df)
+  df_error <- df %>%
+    mutate(
+      Date = as.Date(Date),
+      Residual = Actual - Pred,
+      Abs_Error = abs(Residual),
+      Residual_Label = round(Residual, 3),
+      Abs_Error_Label = round(Abs_Error, 3),
+      Error_Direction = if_else(Residual >= 0, "Under Prediction", "Over Prediction")
+    )
+  
+  if (has_gradient) {
+    df_error <- df_error %>%
+      mutate(
+        Residual_Gradient = Actual - Pred_Gradient,
+        Abs_Error_Gradient = abs(Residual_Gradient),
+        Residual_Gradient_Label = round(Residual_Gradient, 3),
+        Abs_Error_Gradient_Label = round(Abs_Error_Gradient, 3)
+      )
+  }
+  
+  mean_residual <- mean(df_error$Residual, na.rm = TRUE)
+  median_abs_error <- median(df_error$Abs_Error, na.rm = TRUE)
+  subtitle <- paste0(
+    "Mean residual: ", round(mean_residual, 3),
+    " | Median absolute error: ", round(median_abs_error, 3)
+  )
+  
+  if (has_gradient) {
+    subtitle <- paste0(
+      subtitle,
+      "<br>Gradient mean residual: ", round(mean(df_error$Residual_Gradient, na.rm = TRUE), 3),
+      " | Gradient median absolute error: ", round(median(df_error$Abs_Error_Gradient, na.rm = TRUE), 3)
+    )
+  }
+  
+  bar_colors <- ifelse(df_error$Residual >= 0, "#5B9BD5", "#E15241")
+  
+  p_time <- plot_ly(df_error, x = ~Date) %>%
+    add_bars(
+      y = ~Residual,
+      name = "Residual",
+      marker = list(color = bar_colors),
+      customdata = ~paste(Residual_Label, Error_Direction, sep = "|"),
+      hovertemplate = paste(
+        "Date: %{x|%Y-%m-%d}",
+        "<br>Residual: %{y:.3f}",
+        "<br>%{customdata}",
+        "<extra></extra>"
+      )
+    ) %>%
+    add_lines(
+      y = rep(mean_residual, nrow(df_error)),
+      name = "Mean Residual",
+      line = list(color = "#f39c12", width = 2, dash = "dash"),
+      hoverinfo = "skip"
+    ) %>%
+    layout(
+      xaxis = list(title = ""),
+      yaxis = list(title = "Actual - Predicted"),
+      shapes = list(
+        list(
+          type = "line",
+          x0 = min(df_error$Date, na.rm = TRUE),
+          x1 = max(df_error$Date, na.rm = TRUE),
+          y0 = 0,
+          y1 = 0,
+          line = list(color = "#94a3b8", width = 1)
+        )
+      )
+    )
+  
+  if (has_gradient) {
+    p_time <- p_time %>%
+      add_lines(
+        y = ~Residual_Gradient,
+        name = "Gradient Residual",
+        line = list(color = "#2fb344", width = 2),
+        hovertemplate = paste(
+          "Date: %{x|%Y-%m-%d}",
+          "<br>Gradient residual: %{y:.3f}",
+          "<extra></extra>"
+        )
+      )
+  }
+  
+  p_dist <- plot_ly(df_error) %>%
+    add_histogram(
+      x = ~Residual,
+      name = "Residual Distribution",
+      marker = list(color = "#5B9BD5", line = list(color = "#ffffff", width = 1)),
+      opacity = 0.78,
+      hovertemplate = paste(
+        "Residual range: %{x}",
+        "<br>Count: %{y}",
+        "<extra></extra>"
+      )
+    ) %>%
+    layout(
+      xaxis = list(title = "Residual"),
+      yaxis = list(title = "Count"),
+      bargap = 0.05,
+      shapes = list(
+        list(
+          type = "line",
+          x0 = 0,
+          x1 = 0,
+          y0 = 0,
+          y1 = 1,
+          yref = "paper",
+          line = list(color = "#E15241", width = 1.5, dash = "dash")
+        )
+      )
+    )
+  
+  plotly::subplot(
+    p_time,
+    p_dist,
+    nrows = 2,
+    shareX = FALSE,
+    titleY = TRUE,
+    margin = 0.08,
+    heights = c(0.58, 0.42)
+  ) %>%
+    layout(
+      annotations = list(
+        list(
+          text = subtitle,
+          x = 1,
+          y = 1.1,
+          xref = "paper",
+          yref = "paper",
+          showarrow = FALSE,
+          xanchor = "right",
+          align = "right",
+          font = list(size = 11, color = "#64748b")
+        )
+      )
+    ) %>%
+    plotly_model_layout(top_margin = if (has_gradient) 72 else 48, show_legend = has_gradient)
+}
+
 build_residuals_plot <- function(df, title) {
   df_res <- df %>% mutate(Residual = Actual - Pred)
   mean_res <- mean(df_res$Residual, na.rm = TRUE)

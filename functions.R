@@ -10,20 +10,11 @@ library(gridExtra)
 # CONSTANTS
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Channels for which Revenue = Units * revenue_param and ROI = Revenue / Spend
-REVENUE_CHANNELS <- c(
-  "Paid Media Tier 1",
-  "Dealer Direct",
-  "Shift Digital CAP",
-  "VML CAP",
-  "Variable Marketing"
-)
-
 # Column widths for all ROI-style sheets (12 columns)
 # 1-Variable 2-Units 3-% Contribution 4-Model Contribution
 # 5-Expected Contribution 6-Spend(F) 7-Revenue(G) 8-ROI(H)
-# 9-Channel 10-Category 11-Sub-Category 12-Funnel
-ROI_COL_WIDTHS <- c(60, 12, 16, 18, 20, 14, 14, 10, 20, 25, 25, 10)
+# 9-Category 10-Sub-Category 11-Funnel 12-Channel
+ROI_COL_WIDTHS <- c(60, 12, 16, 18, 20, 14, 14, 10, 25, 25, 10, 20)
 
 sort_order_map <- c(
   "T1 Paid Media Nameplate"      = 0,  "T1 Paid Media Halo"           = 1,
@@ -31,7 +22,9 @@ sort_order_map <- c(
   "VML CAP"                      = 4,  "Variable Marketing"           = 5,
   "Retail Inventory"             = 6,  "Brand Consideration"          = 7,
   "Earned Media - KBB"           = 8,  "Earned Media - Google Trends" = 9,
-  "Owned Media - MUSA"           = 10, "Base"                         = 11
+  "Owned Media - MUSA"           = 10, "Competitive Spend"            = 11,
+  "Competitive Inventory"        = 12, "Retail Production"            = 13,
+  "Tariffs"                      = 14, "Base"                         = 99
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -350,21 +343,330 @@ plot_residuals <- function(df, title, filepath) {
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. CHANNEL MAPPING
 # ═══════════════════════════════════════════════════════════════════════════
-get_channel_mapping <- function(col_name) {
-  if      (grepl("Tier_1",                     col_name)) { channel <- "Paid Media Tier 1"; category <- "T1 Paid Media"; sub_category <- if (grepl("Halo", col_name)) "T1 Paid Media Halo" else "T1 Paid Media Nameplate"
-  } else if (grepl("Dealer_Direct",            col_name)) { channel <- category <- sub_category <- "Dealer Direct"
-  } else if (grepl("Shift_Digital_CAP",        col_name)) { channel <- category <- sub_category <- "Shift Digital CAP"
-  } else if (grepl("VML_CAP",                  col_name)) { channel <- category <- sub_category <- "VML CAP"
-  } else if (grepl("Google_Trends",            col_name)) { channel <- "Earned Media"; category <- sub_category <- "Earned Media - Google Trends"
-  } else if (grepl("Endemic_KBB",              col_name)) { channel <- "Earned Media"; category <- sub_category <- "Earned Media - KBB"
-  } else if (grepl("Brand_Health",             col_name)) { channel <- category <- sub_category <- "Brand Consideration"
-  } else if (grepl("Owned_Media_MUSA",         col_name)) { channel <- category <- sub_category <- "Owned Media - MUSA"
-  } else if (grepl("Product_Retail_Inventory", col_name)) { channel <- category <- sub_category <- "Retail Inventory"
-  } else if (grepl("Variable_Marketing",       col_name)) { channel <- category <- sub_category <- "Variable Marketing"
-  } else                                                   { channel <- category <- sub_category <- "Base" }
+normalize_mapping_key <- function(x) {
+  x <- sub("^Contrib_", "", x)
+  x <- trimws(tolower(x))
+  gsub("[^a-z0-9]+", "_", x)
+}
+
+is_spend_column <- function(x) {
+  grepl("(^|_)spend($|_)", normalize_mapping_key(x))
+}
+
+default_master_mapping_paths <- function() {
+  paths <- c(
+    if(exists("app_path", mode = "function")) app_path("FY160 B2D Master Mapping File.xlsx") else NA_character_,
+    if(exists("app_path", mode = "function")) app_path("inputs", "FY160 B2D Master Mapping File.xlsx") else NA_character_,
+    file.path(Sys.getenv("USERPROFILE"), "Downloads", "FY160 B2D Master Mapping File.xlsx")
+  )
+  unique(paths[!is.na(paths) & nzchar(paths)])
+}
+
+mapping_cache <- new.env(parent = emptyenv())
+
+load_master_mapping <- function(mapping_path = NULL) {
+  if(!is.null(mapping_cache$mapping)) return(mapping_cache$mapping)
   
-  funnel <- if (grepl("_Lower", col_name)) "Lower" else if (grepl("_Upper", col_name)) "Upper" else ""
-  list(channel = channel, category = category, sub_category = sub_category, funnel = funnel)
+  candidate_paths <- if(!is.null(mapping_path)) mapping_path else default_master_mapping_paths()
+  mapping_file <- candidate_paths[file.exists(candidate_paths)][1]
+  
+  if(is.na(mapping_file) || length(mapping_file) == 0) {
+    mapping_cache$mapping <- data.frame()
+    return(mapping_cache$mapping)
+  }
+  
+  mapping <- openxlsx::read.xlsx(mapping_file, sheet = "Mapping") %>%
+    dplyr::as_tibble() %>%
+    mutate(
+      across(everything(), ~ ifelse(is.na(.x), NA_character_, trimws(as.character(.x)))),
+      Variable_Key = normalize_mapping_key(Variable)
+    ) %>%
+    filter(!is.na(Variable), Variable != "") %>%
+    distinct(Variable_Key, .keep_all = TRUE)
+  
+  mapping_cache$mapping <- mapping
+  mapping
+}
+
+infer_funnel_from_name <- function(col_name) {
+  clean <- normalize_mapping_key(col_name)
+  
+  if(grepl("lower_upper|upper_lower|upperlower|lowerupper", clean)) return("Lower_Upper")
+  if(grepl("(^|_)lower($|_)", clean)) return("Lower")
+  if(grepl("(^|_)upper($|_)", clean)) return("Upper")
+  ""
+}
+
+infer_t1_channel_from_name <- function(col_name) {
+  clean <- normalize_mapping_key(col_name)
+  
+  channel_rules <- c(
+    "brand_nonbrand_search|brandnonbrand_search" = "Brand_Search_NonBrand_Search",
+    "nonbrand_search" = "NonBrand_Search",
+    "brand_search" = "Brand_Search",
+    "content_amplification" = "Content_Amplification",
+    "national_connected_tv" = "National_Connected_TV",
+    "connected_tv|ctv" = "Connected_TV",
+    "paid_social" = "Paid_Social",
+    "digital_display_retargeting" = "Digital_Display_Retargeting",
+    "digital_display" = "Digital_Display",
+    "digital_video_digital_audio" = "Digital_Video_Digital_Audio",
+    "digital_video|online_video" = "Digital_Video",
+    "audio_partnerships_ooh|digital_audio_ooh" = "Digital_Audio_OOH",
+    "digital_audio|audio" = "Digital_Audio",
+    "demand_gen|demandgen|discovery" = "Demand_Gen",
+    "youtube" = "YouTube",
+    "pmax|performance_max" = "Pmax",
+    "rich_media" = "Rich_Media",
+    "brand_partnerships" = "Brand_Partnerships",
+    "national_tv" = "National_TV",
+    "native" = "Native",
+    "cinema" = "Cinema",
+    "ooh" = "OOH"
+  )
+  
+  matched <- names(channel_rules)[vapply(names(channel_rules), grepl, logical(1), x = clean)]
+  if(length(matched) > 0) return(unname(channel_rules[[matched[1]]]))
+  
+  halo_match <- regmatches(clean, regexpr("cx30|cx50_hybrid|cx50|cx70|cx90|cx5|mazda3|mx5|brand|other", clean))
+  if(length(halo_match) > 0 && nzchar(halo_match)) return(paste0(toupper(halo_match), "_Halo"))
+  
+  "Paid_Media"
+}
+
+mapping_row_to_list <- function(row) {
+  list(
+    channel = row$Channel,
+    category = row$Category,
+    sub_category = row$`Sub-Category`,
+    funnel = row$Funnel,
+    sp_mapping = row$SP_Mapping,
+    sp_channel = row$SP_Channel,
+    sp_agg = row$SP_Agg,
+    mapping_source = "FY160 mapping"
+  )
+}
+
+fallback_channel_mapping <- function(col_name) {
+  clean <- normalize_mapping_key(col_name)
+  funnel <- infer_funnel_from_name(col_name)
+  sp_mapping <- "NonMedia"
+  sp_agg <- "Sum"
+  
+  if(grepl("paid_media_tier_1|tier_1", clean)) {
+    channel <- infer_t1_channel_from_name(col_name)
+    category <- "T1 Paid Media"
+    sub_category <- if(grepl("halo", clean)) "T1 Paid Media Halo" else "T1 Paid Media Nameplate"
+    if(identical(funnel, "")) funnel <- if(identical(sub_category, "T1 Paid Media Halo")) "T1 Paid Media Halo" else ""
+    sp_mapping <- "Media"
+    sp_channel <- paste("T1 Paid Media", channel)
+  } else if(grepl("dealer_direct", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Dealer Direct"
+  } else if(grepl("shift_digital_cap", clean)) {
+    category <- sub_category <- funnel <- "Shift Digital CAP"
+    channel <- infer_t1_channel_from_name(col_name)
+    sp_channel <- paste("Shift Digital CAP", channel)
+  } else if(grepl("vml_cap", clean)) {
+    category <- sub_category <- funnel <- "VML CAP"
+    channel <- infer_t1_channel_from_name(col_name)
+    sp_channel <- paste("VML CAP", channel)
+  } else if(grepl("variable_marketing|incentive", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Variable Marketing"
+  } else if(grepl("competitive.*spend|competitive_spend", clean)) {
+    channel <- category <- funnel <- sp_channel <- "Competitive Spend"
+    sub_category <- "Competitive Spend"
+  } else if(grepl("competitive.*inventory|days_of_supply", clean)) {
+    channel <- funnel <- "Competitive Inventory"
+    category <- sp_channel <- "Competitive"
+    sub_category <- "Competitive Inventory"
+    sp_agg <- "Average"
+  } else if(grepl("brand_health|brand_consideration|consideration", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Brand Consideration"
+    sp_agg <- "Average"
+  } else if(grepl("google_trends", clean)) {
+    channel <- "Earned Media"
+    category <- sub_category <- "Earned Media - Google Trends"
+    funnel <- sp_channel <- "Base"
+  } else if(grepl("endemic_kbb|kbb", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Earned Media - KBB"
+  } else if(grepl("owned_media_musa|musa", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Owned Media - MUSA"
+  } else if(grepl("retail_inventory", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Retail Inventory"
+    sp_agg <- "Average"
+  } else if(grepl("retail_production|production", clean)) {
+    channel <- category <- funnel <- sp_channel <- "Retail Production"
+    sub_category <- "Retail Production"
+  } else if(grepl("tariff|tarrif|exchange_rate", clean)) {
+    channel <- funnel <- sp_channel <- "Tariffs"
+    category <- "Base"
+    sub_category <- "Tariffs"
+  } else if(grepl("tax_credit|ev_credit", clean)) {
+    channel <- funnel <- sp_channel <- "EV Tax Credit"
+    category <- "Base"
+    sub_category <- "EV Tax Credit"
+  } else if(grepl("end_of_month|month_end|closingmonth|sales_mo_close", clean)) {
+    channel <- sp_channel <- "Base"
+    category <- "Base"
+    sub_category <- funnel <- "End_of_Month_Flag"
+  } else if(grepl("end_of_fiscal|fiscal_year|end_of_fy|end_of_159", clean)) {
+    channel <- sp_channel <- "Base"
+    category <- "Base"
+    sub_category <- funnel <- "End_of_FY_Flag"
+  } else {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Base"
+  }
+  
+  list(
+    channel = channel,
+    category = category,
+    sub_category = sub_category,
+    funnel = funnel,
+    sp_mapping = sp_mapping,
+    sp_channel = sp_channel,
+    sp_agg = sp_agg,
+    mapping_source = "fallback rules"
+  )
+}
+
+get_channel_mapping <- function(col_name) {
+  mapping <- load_master_mapping()
+  lookup_key <- normalize_mapping_key(col_name)
+  
+  if(nrow(mapping) > 0 && lookup_key %in% mapping$Variable_Key) {
+    return(mapping_row_to_list(mapping[match(lookup_key, mapping$Variable_Key), ]))
+  }
+  
+  fallback_channel_mapping(col_name)
+}
+
+match_spend_total <- function(var_clean, spend_lookup, spend_lookup_normalized) {
+  if(length(spend_lookup) == 0) return(NA_real_)
+  
+  exact_spend <- as.numeric(spend_lookup[var_clean])
+  if(!is.na(exact_spend)) return(exact_spend)
+  
+  normalized_key <- normalize_mapping_key(var_clean)
+  as.numeric(spend_lookup_normalized[normalized_key])
+}
+
+read_table_sheet <- function(filepath, sheet = 1) {
+  ext <- tolower(tools::file_ext(filepath))
+  
+  if(ext %in% c("xlsx", "xlsm", "xls")) {
+    return(openxlsx::read.xlsx(filepath, sheet = sheet, detectDates = TRUE, check.names = FALSE) %>%
+             dplyr::as_tibble())
+  }
+  
+  if(ext == "csv") {
+    return(readr::read_csv(filepath, show_col_types = FALSE, progress = FALSE) %>%
+             dplyr::as_tibble())
+  }
+  
+  stop("Unsupported file type: ", ext)
+}
+
+load_cftp <- function(filepath, sheet = 1, nameplate = NULL) {
+  df_cftp <- read_table_sheet(filepath, sheet = sheet)
+  colnames(df_cftp) <- trimws(colnames(df_cftp))
+  
+  required_cols <- c("Period", "Date", "Final_Nameplate", "AVG_CFTP")
+  missing_cols <- setdiff(required_cols, colnames(df_cftp))
+  if(length(missing_cols) > 0) {
+    stop("CFTP file is missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  df_cftp <- df_cftp %>%
+    mutate(
+      Date = parse_uploaded_date(Date, "Consumer Facing Transaction Price AVG"),
+      Month = as.Date(floor_date(Date, "month")),
+      Final_Nameplate = trimws(as.character(Final_Nameplate)),
+      AVG_CFTP = as.numeric(gsub(",", "", as.character(AVG_CFTP)))
+    ) %>%
+    filter(!is.na(Month), !is.na(Final_Nameplate), Final_Nameplate != "", !is.na(AVG_CFTP))
+  
+  if(!is.null(nameplate) && nzchar(nameplate)) {
+    df_cftp <- df_cftp %>% filter(Final_Nameplate == nameplate)
+  }
+  
+  df_cftp <- df_cftp %>%
+    group_by(Month, Final_Nameplate) %>%
+    summarise(AVG_CFTP = mean(AVG_CFTP, na.rm = TRUE), .groups = "drop") %>%
+    arrange(Final_Nameplate, Month)
+  
+  if(!is.null(nameplate) && nzchar(nameplate) && nrow(df_cftp) == 0) {
+    stop("No valid CFTP rows found for Final_Nameplate: ", nameplate)
+  }
+  
+  sheet_name <- if(tolower(tools::file_ext(filepath)) %in% c("xlsx", "xlsm", "xls")) {
+    if(is.numeric(sheet)) openxlsx::getSheetNames(filepath)[sheet] else sheet
+  } else {
+    "csv"
+  }
+  
+  cat("CFTP file loaded - sheet:", sheet_name, "- rows:", nrow(df_cftp), "\n")
+  if(!is.null(nameplate) && nzchar(nameplate)) {
+    cat("CFTP nameplate selected:", nameplate, "\n")
+  }
+  if(nrow(df_cftp) > 0) {
+    cat("CFTP months:", paste(format(sort(unique(df_cftp$Month)), "%Y-%m"), collapse = ", "), "\n")
+  }
+  
+  df_cftp
+}
+
+cftp_nameplate_choices <- function(filepath, sheet = 1) {
+  df_cftp <- load_cftp(filepath, sheet = sheet, nameplate = NULL)
+  sort(unique(df_cftp$Final_Nameplate))
+}
+
+missing_cftp_months <- function(df_med_input, cftp_data) {
+  if(is.null(cftp_data) || nrow(cftp_data) == 0 || nrow(df_med_input) == 0) {
+    return(character(0))
+  }
+  
+  med_months <- sort(unique(as.Date(floor_date(df_med_input$Date, "month"))))
+  cftp_months <- sort(unique(cftp_data$Month))
+  format(med_months[!med_months %in% cftp_months], "%Y-%m")
+}
+
+calculate_cftp_revenue <- function(df_med_input, contrib_cols, cftp_data) {
+  if(is.null(cftp_data) || nrow(cftp_data) == 0) {
+    return(list(
+      revenue_lookup = setNames(numeric(0), character(0)),
+      covered_lookup = setNames(logical(0), character(0)),
+      missing_months = character(0)
+    ))
+  }
+  
+  missing_months <- missing_cftp_months(df_med_input, cftp_data)
+  
+  if(length(missing_months) > 0) {
+    cat("  WARNING - CFTP missing for months:",
+        paste(missing_months, collapse = ", "), "\n")
+  }
+  
+  revenue_by_var <- df_med_input %>%
+    mutate(Month = as.Date(floor_date(Date, "month"))) %>%
+    select(Date, Month, all_of(contrib_cols)) %>%
+    pivot_longer(all_of(contrib_cols), names_to = "Variable", values_to = "Daily_Units") %>%
+    left_join(cftp_data %>% select(Month, AVG_CFTP), by = "Month") %>%
+    group_by(Variable) %>%
+    summarise(
+      Revenue = if(any(!is.na(AVG_CFTP) & Daily_Units > 0)) {
+        sum(ifelse(Daily_Units > 0, Daily_Units * AVG_CFTP, NA_real_), na.rm = TRUE)
+      } else {
+        NA_real_
+      },
+      Has_CFTP_Revenue = any(!is.na(AVG_CFTP) & Daily_Units > 0),
+      .groups = "drop"
+    )
+  
+  list(
+    revenue_lookup = setNames(revenue_by_var$Revenue, revenue_by_var$Variable),
+    covered_lookup = setNames(revenue_by_var$Has_CFTP_Revenue, revenue_by_var$Variable),
+    missing_months = missing_months
+  )
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -381,11 +683,22 @@ alt_style   <- createStyle(fgFill = "#D6E4F0", halign = "center")
 white_style <- createStyle(fgFill = "#FFFFFF", halign = "center")
 
 stripe_rows <- function(wb, sheet, n_rows, start_row, n_cols) {
-  for (i in seq_len(n_rows)) {
-    row   <- start_row + i
-    style <- if (row %% 2 == 0) alt_style else white_style
-    addStyle(wb, sheet, style, rows = row, cols = 1:n_cols, gridExpand = TRUE)
+  if(n_rows <= 0) {
+    return(invisible(NULL))
   }
+  
+  rows <- start_row + seq_len(n_rows)
+  even_rows <- rows[rows %% 2 == 0]
+  odd_rows <- rows[rows %% 2 != 0]
+  
+  if(length(even_rows) > 0) {
+    addStyle(wb, sheet, alt_style, rows = even_rows, cols = 1:n_cols, gridExpand = TRUE)
+  }
+  if(length(odd_rows) > 0) {
+    addStyle(wb, sheet, white_style, rows = odd_rows, cols = 1:n_cols, gridExpand = TRUE)
+  }
+  
+  invisible(NULL)
 }
 
 # ── Summary sheet ─────────────────────────────────────────────────────────────
@@ -652,7 +965,7 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data) {
 # Negatives are handled correctly in both cases:
 #   Units / sum(Units) → all % sum to 100 regardless of sign
 #
-build_roi_table <- function(df_med_input, revenue_param,
+build_roi_table <- function(df_med_input, cftp_data,
                             df_input_filtered = NULL,
                             df_pct            = NULL) {
   
@@ -665,6 +978,8 @@ build_roi_table <- function(df_med_input, revenue_param,
   
   if (length(contrib_cols) == 0) stop("No Contrib_ columns found in df_med")
   if (has_base) contrib_cols <- c(contrib_cols, "Base")
+  
+  cftp_revenue <- calculate_cftp_revenue(df_med_input, contrib_cols, cftp_data)
   
   # ── Sum contributions over the (already filtered) period ──────────────────
   units <- df_med_input %>%
@@ -715,6 +1030,7 @@ build_roi_table <- function(df_med_input, revenue_param,
       select(-any_of(c("Date", "Actual", "Row"))) %>%
       select(where(is.numeric)) %>%
       colnames()
+    spend_cols <- spend_cols[is_spend_column(spend_cols)]
     
     if (length(spend_cols) > 0) {
       spend_sums <- df_input_filtered %>%
@@ -731,7 +1047,7 @@ build_roi_table <- function(df_med_input, revenue_param,
       # Diagnostics
       var_clean_vals <- sub("^Contrib_", "", contrib_cols)
       var_clean_vals <- var_clean_vals[var_clean_vals != "Base"]
-      var_normalized <- gsub("[^a-z0-9]+", "_", tolower(var_clean_vals))
+      var_normalized <- normalize_mapping_key(var_clean_vals)
       is_matched <- var_clean_vals %in% names(spend_lookup) | var_normalized %in% names(spend_lookup_normalized)
       n_match   <- sum(is_matched)
       unmatched <- var_clean_vals[!is_matched]
@@ -752,31 +1068,38 @@ build_roi_table <- function(df_med_input, revenue_param,
       Category     = sapply(mapping, `[[`, "category"),
       Sub_Category = sapply(mapping, `[[`, "sub_category"),
       Funnel       = sapply(mapping, `[[`, "funnel"),
-      sort_key     = coalesce(as.numeric(sort_order_map[Sub_Category]), 11L)
+      sort_key     = ifelse(
+        Category == "Base",
+        sort_order_map[["Base"]],
+        coalesce(as.numeric(sort_order_map[Sub_Category]), sort_order_map[["Base"]] - 1)
+      )
     ) %>%
     arrange(sort_key) %>%
-    group_by(Channel) %>%
+    group_by(Category) %>%
     mutate(Model_Contribution = sum(Period_Pct, na.rm = TRUE)) %>%
     ungroup() %>%
     mutate(
       Expected_Contribution = NA_real_,
       
-      # Spend: matched from data_input by var_clean name; NA if no match
-      Spend = if (length(spend_lookup) > 0) {
-        exact_spend <- as.numeric(spend_lookup[var_clean])
-        normalized_spend <- as.numeric(spend_lookup_normalized[gsub("[^a-z0-9]+", "_", tolower(var_clean))])
-        matched_spend <- ifelse(is.na(exact_spend), normalized_spend, exact_spend)
-        ifelse(Channel %in% REVENUE_CHANNELS, matched_spend, NA_real_)
-      } else {
-        NA_real_
-      },
+      # Spend: matched from data_input by var_clean name; NA if no match.
+      Spend = vapply(
+        var_clean,
+        match_spend_total,
+        numeric(1),
+        spend_lookup = spend_lookup,
+        spend_lookup_normalized = spend_lookup_normalized
+      ),
+      Has_Spend_Match = !is.na(Spend),
       
-      # Revenue = Units * revenue_param  →  only for REVENUE_CHANNELS
-      Revenue = ifelse(Channel %in% REVENUE_CHANNELS,
-                       Units * revenue_param, NA_real_),
+      Has_CFTP_Revenue = as.logical(cftp_revenue$covered_lookup[Variable]),
+      Revenue = ifelse(
+        Units > 0 & Has_Spend_Match & !is.na(Has_CFTP_Revenue) & Has_CFTP_Revenue,
+        as.numeric(cftp_revenue$revenue_lookup[Variable]),
+        NA_real_
+      ),
       
       # ROI placeholder → overwritten by live Excel formula in write_roi_sheet
-      ROI = ifelse(Channel %in% REVENUE_CHANNELS & !is.na(Revenue) & !is.na(Spend) & Spend != 0,
+      ROI = ifelse(Units > 0 & Has_Spend_Match & !is.na(Revenue) & Spend != 0,
                    Revenue / Spend,
                    NA_real_)
     ) %>%
@@ -789,16 +1112,16 @@ build_roi_table <- function(df_med_input, revenue_param,
       Spend,                              # col 6 = F
       Revenue,                            # col 7 = G
       ROI,                                # col 8 = H  ← Excel formula
-      Channel,
       Category,
       `Sub-Category`          = Sub_Category,
-      Funnel
+      Funnel,
+      Channel
     )
 }
 
 # ── Write any ROI-style table to a worksheet ─────────────────────────────────
 # ROI formula: =IFERROR(Revenue / Spend, "")
-# Written only for REVENUE_CHANNELS rows (where Revenue is not NA)
+# Written only for rows with matched Spend (where Revenue is not NA)
 write_roi_sheet <- function(wb, sheet_name, df_export) {
   df_export <- df_export %>%
     mutate(across(where(is.numeric), ~ round(.x, 3)))
@@ -836,7 +1159,7 @@ write_roi_sheet <- function(wb, sheet_name, df_export) {
 # ── ROI sheet  (filtered period  |  % recalculated from period units) ────────
 add_roi_sheet <- function(wb, df_med, df_input,
                           contrib_date_from, contrib_date_to,
-                          revenue_param = REVENUE_PARAM) {
+                          cftp_data) {
   cat("\nBuilding ROI sheet (filtered period)...\n")
   
   df_med_f   <- df_med   %>% filter(Date >= contrib_date_from & Date <= contrib_date_to)
@@ -848,7 +1171,7 @@ add_roi_sheet <- function(wb, df_med, df_input,
       "| spend:", nrow(df_input_f), "\n")
   
   # df_pct = NULL → % recalculated from filtered period units
-  df_export <- build_roi_table(df_med_f, revenue_param,
+  df_export <- build_roi_table(df_med_f, cftp_data = cftp_data,
                                df_input_filtered = df_input_f,
                                df_pct            = NULL)
   write_roi_sheet(wb, "ROI", df_export)
@@ -856,14 +1179,14 @@ add_roi_sheet <- function(wb, df_med, df_input,
 
 # ── Full Period Contribution  (all dates  |  % from df_pct model file) ───────
 add_full_period_contrib_sheet <- function(wb, df_med, df_pct, df_input,
-                                          revenue_param = REVENUE_PARAM) {
+                                          cftp_data) {
   cat("\nBuilding Full Period Contribution sheet (all dates)...\n")
   cat("  Date range:", as.character(min(df_med$Date)),
       "→", as.character(max(df_med$Date)), "\n")
   cat("  Total rows:", nrow(df_med), "\n")
   
   # df_pct passed → % taken from model file (official full-period %)
-  df_export <- build_roi_table(df_med, revenue_param,
+  df_export <- build_roi_table(df_med, cftp_data = cftp_data,
                                df_input_filtered = df_input,
                                df_pct            = df_pct)
   write_roi_sheet(wb, "Full Period Contribution", df_export)
@@ -956,15 +1279,19 @@ add_pre_vs_post_sheet <- function(wb, df_med, cutoff_date) {
       Category     = sapply(mapping, `[[`, "category"),
       Sub_Category = sapply(mapping, `[[`, "sub_category"),
       Funnel       = sapply(mapping, `[[`, "funnel"),
-      sort_key     = coalesce(as.numeric(sort_order_map[Sub_Category]), 11L)
+      sort_key     = ifelse(
+        Category == "Base",
+        sort_order_map[["Base"]],
+        coalesce(as.numeric(sort_order_map[Sub_Category]), sort_order_map[["Base"]] - 1)
+      )
     ) %>%
     arrange(sort_key) %>%
     select(
       Variable       = var_clean,
-      Channel,
       Category,
       `Sub-Category` = Sub_Category,
       Funnel,
+      Channel,
       `Pre Units`    = Pre_Units,
       `Post Units`   = Post_Units
     ) %>%

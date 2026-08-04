@@ -6,30 +6,91 @@ ui <- fluidPage(
       .mazda-app-shell { padding: 22px 28px 32px; }
       .mazda-sidebar { display: grid; gap: 16px; }
       .mazda-content { min-width: 0; }
-      .mazda-layout { display: grid; gap: 20px; grid-template-columns: 340px minmax(0, 1fr); }
-      .mazda-sidebar .card { margin-bottom: 0; overflow: hidden; }
+      .mazda-layout { display: grid; gap: 20px; grid-template-columns: 360px minmax(0, 1fr); align-items: start; }
+      .mazda-sidebar .card { margin-bottom: 0; overflow: visible; }
       .mazda-sidebar .card-header { padding: 10px 14px 8px; font-size: 13px; }
       .mazda-sidebar .card-body { padding: 12px 14px; }
       .sidebar-card-inputs .card-body { min-height: 245px; max-height: 315px; overflow-y: auto; }
+      .sidebar-card-settings,
+      .sidebar-card-settings .card-body { overflow: visible !important; position: relative; z-index: 30; }
       .sidebar-card-settings .card-body { min-height: 165px; }
       .sidebar-card-gradient .card-body { min-height: 86px; max-height: 210px; overflow-y: auto; }
       .sidebar-card-export .card-body { min-height: 148px; }
       .mazda-sidebar .form-group { margin-bottom: 10px; }
       .mazda-sidebar label { font-size: 12px; margin-bottom: 4px; }
+      .mazda-sidebar .shiny-input-container,
+      .mazda-sidebar .input-group,
+      .mazda-sidebar .selectize-control { width: 100% !important; max-width: 100%; min-width: 0; }
       .mazda-sidebar .form-control,
       .mazda-sidebar .selectize-input { min-height: 30px !important; padding: 5px 8px !important; font-size: 12px !important; }
+      .mazda-sidebar .input-group .form-control,
+      .mazda-sidebar input.form-control[readonly] {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mazda-sidebar .selectize-input {
+        align-items: center;
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        max-width: 100%;
+        overflow: hidden;
+      }
+      .mazda-sidebar .selectize-input .item {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .selectize-dropdown {
+        z-index: 100000 !important;
+        max-width: min(360px, calc(100vw - 24px)) !important;
+      }
+      .selectize-dropdown-content {
+        max-height: 220px !important;
+      }
       .mazda-sidebar .btn { font-size: 11.5px; padding: 5px 10px; }
+      .sidebar-step-title {
+        align-items: center;
+        display: inline-flex;
+        gap: 8px;
+      }
+      .sidebar-step-number {
+        align-items: center;
+        background: #5B9BD5;
+        border-radius: 999px;
+        color: #fff;
+        display: inline-flex;
+        font-size: 10px;
+        font-weight: 800;
+        height: 20px;
+        justify-content: center;
+        line-height: 1;
+        width: 20px;
+      }
       .sidebar-file-status { display: grid; gap: 6px; margin-top: 8px; }
       .sidebar-file-status .qa-summary { margin-bottom: 0; padding: 7px 9px; border-radius: 6px; }
       .sidebar-file-status .qa-summary-text { font-size: 10.5px; line-height: 1.15; }
       .sidebar-file-status .qa-summary-icon { font-size: 11px; }
       .mazda-main-tabs .tab-content { padding-top: 18px; }
-      .mazda-main-tabs .nav-tabs { border-bottom: 2px solid #dee2e6; }
+      .mazda-main-tabs .nav-tabs {
+        border-bottom: 2px solid #dee2e6;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 6px;
+        overflow: visible;
+      }
+      .mazda-main-tabs .nav-tabs > li { float: none; max-width: 100%; }
       .mazda-main-tabs .nav-tabs > li > a {
         color: #6c757d !important;
         font-size: 13.5px;
         font-weight: 500;
         border-radius: 0 !important;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .mazda-main-tabs .nav-tabs > li.active > a,
       .mazda-main-tabs .nav-tabs > li.active > a:focus,
@@ -61,6 +122,11 @@ ui <- fluidPage(
       }
       .model-fit-card .card-body { padding-top: 18px; }
       .model-fit-card .js-plotly-plot { width: 100% !important; }
+      .model-fit-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .dataTables_wrapper { font-size: 12px; }
       .dt-toolbar {
         align-items: center;
@@ -221,10 +287,38 @@ ui <- fluidPage(
         font-size: 11.5px;
         margin-top: 3px;
       }
+      .roi-method-panel {
+        background: #f8fbff;
+        border: 1px solid #dbe7f3;
+        border-left: 4px solid #5B9BD5;
+        border-radius: 7px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-bottom: 14px;
+        padding: 12px 14px;
+      }
+      .roi-method-item {
+        color: #475569;
+        font-size: 12px;
+        line-height: 1.35;
+        min-width: 0;
+      }
+      .roi-method-kicker {
+        color: #1e293b;
+        display: block;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        margin-bottom: 3px;
+        text-transform: uppercase;
+      }
       @media (max-width: 1100px) {
         .mazda-layout { grid-template-columns: 1fr; }
+        .model-fit-grid { grid-template-columns: 1fr; }
         .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .overview-status-row { grid-template-columns: 1fr; }
+        .roi-method-panel { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
         .overview-grid { grid-template-columns: 1fr; }
@@ -254,7 +348,7 @@ ui <- fluidPage(
       tags$aside(
         class = "mazda-sidebar",
         card(
-          "Input Files",
+          step_title("1", "Model Files"),
           fileInput(
             "all_files",
             "Upload MFF and model output files",
@@ -265,7 +359,7 @@ ui <- fluidPage(
           class = "sidebar-card-inputs"
         ),
         card(
-          "Analysis Settings",
+          step_title("2", "Revenue and Period"),
           checkboxInput("compare_new_period", "Compare New Period", value = FALSE),
           conditionalPanel(
             "input.compare_new_period",
@@ -277,12 +371,24 @@ ui <- fluidPage(
               end = DEFAULT_ROI_TO
             )
           ),
-          numericInput("revenue_per_unit", "Revenue per Unit", value = DEFAULT_REVENUE_PER_UNIT, min = 0),
-          selectInput("aggregation_method", "Aggregation Method", choices = c("sum", "mean"), selected = "sum"),
+          fileInput(
+            "cftp_file",
+            "Consumer Facing Transaction Price AVG",
+            accept = c(".csv", ".xlsx", ".xlsm", ".xls")
+          ),
+          uiOutput("cftp_sheet_ui"),
+          uiOutput("cftp_nameplate_ui"),
+          selectizeInput(
+            "aggregation_method",
+            "Aggregation Method",
+            choices = c("sum", "mean"),
+            selected = "sum",
+            options = list(dropdownParent = "body")
+          ),
           class = "sidebar-card-settings"
         ),
         card(
-          "Gradient Adjustment",
+          step_title("3", "Optional Adjustment"),
           checkboxInput("use_gradient", "Apply Gradient Adjustment", value = FALSE),
           conditionalPanel(
             "input.use_gradient",
@@ -292,13 +398,12 @@ ui <- fluidPage(
           class = "sidebar-card-gradient"
         ),
         card(
-          "Run and Export",
+          step_title("4", "Run and Export"),
           actionButton("run_analysis", "Run Analysis", class = "btn-primary mazda-run-btn"),
           tags$hr(),
                   tags$div(
                     class = "mazda-downloads",
                     downloadButton("download_excel", "Download Excel Report"),
-                    downloadButton("download_correlation", "Download Correlation CSV"),
                     downloadButton("download_long_format", "Download Long Format CSV")
                   ),
                   class = "sidebar-card-export"
@@ -336,14 +441,22 @@ ui <- fluidPage(
                 )
               ),
               tags$div(
-                class = "model-fit-card",
-                card("Actual vs Predicted Scatter", plotlyOutput("fit_scatter", height = "410px"))
+                class = "model-fit-grid",
+                tags$div(
+                  class = "model-fit-card",
+                  card("Actual vs Predicted Scatter", plotlyOutput("fit_scatter", height = "410px"))
+                ),
+                tags$div(
+                  class = "model-fit-card",
+                  card("Error Behavior", plotlyOutput("fit_error_behavior", height = "410px"))
+                )
               )
             ),
             tabPanel(
               "ROI",
               card(
                 "Filtered Period ROI",
+                roi_method_panel(),
                 uiOutput("roi_version_switch"),
                 DTOutput("roi_table")
               )

@@ -31,10 +31,57 @@ server <- function(input, output, session) {
     if (ext %in% c("xlsx", "xlsm", "xls")) {
       gradient_path <- materialize_upload(input$gradient_file, "Gradient file")
       sheets <- openxlsx::getSheetNames(gradient_path)
-      selectInput("gradient_sheet", "Gradient Sheet", choices = sheets, selected = sheets[1])
+      selectizeInput(
+        "gradient_sheet",
+        "Gradient Sheet",
+        choices = sheets,
+        selected = sheets[1],
+        options = list(dropdownParent = "body")
+      )
     } else {
       textInput("gradient_sheet", "Gradient Sheet", value = "1")
     }
+  })
+  
+  output$cftp_sheet_ui <- renderUI({
+    req(input$cftp_file)
+    ext <- tolower(tools::file_ext(input$cftp_file$name))
+    
+    if (ext %in% c("xlsx", "xlsm", "xls")) {
+      cftp_path <- materialize_upload(input$cftp_file, "Consumer Facing Transaction Price AVG")
+      sheets <- openxlsx::getSheetNames(cftp_path)
+      selectizeInput(
+        "cftp_sheet",
+        "CFTP Sheet",
+        choices = sheets,
+        selected = sheets[1],
+        options = list(dropdownParent = "body")
+      )
+    } else {
+      textInput("cftp_sheet", "CFTP Sheet", value = "1")
+    }
+  })
+  
+  cftp_nameplates <- reactive({
+    req(input$cftp_file)
+    cftp_path <- materialize_upload(input$cftp_file, "Consumer Facing Transaction Price AVG")
+    cftp_sheet <- if (!is.null(input$cftp_sheet) && nzchar(input$cftp_sheet)) input$cftp_sheet else 1
+    cftp_nameplate_choices(cftp_path, sheet = cftp_sheet)
+  })
+  
+  output$cftp_nameplate_ui <- renderUI({
+    req(input$cftp_file)
+    choices <- cftp_nameplates()
+    
+    validate(need(length(choices) > 0, "No Final_Nameplate values found in the CFTP file."))
+    
+    selectizeInput(
+      "cftp_nameplate",
+      "Final Nameplate",
+      choices = choices,
+      selected = choices[1],
+      options = list(dropdownParent = "body", maxOptions = 1000)
+    )
   })
 
   selected_files <- reactive({
@@ -157,6 +204,11 @@ server <- function(input, output, session) {
           need(input$roi_range[1] <= input$roi_range[2], "The ROI start date must be before the ROI end date.")
         )
       }
+      
+      validate(
+        need(!is.null(input$cftp_file), "Upload the Consumer Facing Transaction Price AVG file."),
+        need(!is.null(input$cftp_nameplate) && nzchar(input$cftp_nameplate), "Select a Final Nameplate for CFTP revenue.")
+      )
 
       gradient_path <- if (isTRUE(input$use_gradient) && !is.null(input$gradient_file)) {
         materialize_upload(input$gradient_file, "Gradient file")
@@ -169,18 +221,27 @@ server <- function(input, output, session) {
       } else {
         1
       }
+      
+      cftp_path <- materialize_upload(input$cftp_file, "Consumer Facing Transaction Price AVG")
+      cftp_sheet <- if (!is.null(input$cftp_sheet) && nzchar(input$cftp_sheet)) {
+        input$cftp_sheet
+      } else {
+        1
+      }
 
       result <- build_analysis(
         data_loaded = loaded,
         cutoff_date = input$cutoff_date,
-        revenue_per_unit = input$revenue_per_unit,
         aggregation_method = input$aggregation_method,
         roi_from = if (isTRUE(input$compare_new_period)) input$roi_range[1] else NULL,
         roi_to = if (isTRUE(input$compare_new_period)) input$roi_range[2] else NULL,
         compare_new_period = input$compare_new_period,
         use_gradient = input$use_gradient,
         gradient_path = gradient_path,
-        gradient_sheet = gradient_sheet
+        gradient_sheet = gradient_sheet,
+        cftp_path = cftp_path,
+        cftp_sheet = cftp_sheet,
+        cftp_nameplate = input$cftp_nameplate
       )
 
       showNotification("Analysis completed successfully.", type = "message", duration = 6)
@@ -227,6 +288,7 @@ server <- function(input, output, session) {
       tags$div(
         class = "overview-status-row",
         status("ROI Period", result$roi_period_label),
+        status("CFTP", result$cftp_message),
         status("New Period Comparison", if (isTRUE(result$compare_new_period)) "Enabled" else "Disabled"),
         status("Gradient Status", result$gradient_message)
       )
@@ -279,6 +341,12 @@ server <- function(input, output, session) {
     result <- analysis()
     granularity <- input$fit_granularity %||% "Daily"
     build_fit_scatter_plot(model_fit_data(result, granularity), granularity)
+  })
+  
+  output$fit_error_behavior <- renderPlotly({
+    result <- analysis()
+    granularity <- input$fit_granularity %||% "Daily"
+    build_error_behavior_plot(model_fit_data(result, granularity), granularity)
   })
 
   output$metrics_over_time <- renderDT({
@@ -371,6 +439,14 @@ server <- function(input, output, session) {
         "Date Range",
         paste(as.character(diag$date_range[1]), "to", as.character(diag$date_range[2])),
         "",
+        "CFTP",
+        result$cftp_message,
+        paste("CFTP months:", paste(format(sort(unique(result$cftp_data$Month)), "%Y-%m"), collapse = ", ")),
+        paste(
+          "Missing ROI CFTP months:",
+          if (length(result$cftp_missing_months) > 0) paste(result$cftp_missing_months, collapse = ", ") else "None"
+        ),
+        "",
         "Correlation Split",
         capture.output(print(result$correlation))
       ),
@@ -387,36 +463,19 @@ server <- function(input, output, session) {
         analysis = analysis(),
         cutoff_date = input$cutoff_date,
         roi_from = if (isTRUE(input$compare_new_period)) input$roi_range[1] else NULL,
-        roi_to = if (isTRUE(input$compare_new_period)) input$roi_range[2] else NULL,
-        revenue_per_unit = input$revenue_per_unit
+        roi_to = if (isTRUE(input$compare_new_period)) input$roi_range[2] else NULL
       )
       saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
-
-  output$download_correlation <- downloadHandler(
-    filename = function() {
-      paste0("correlation_results_", Sys.Date(), ".csv")
-    },
-    content = function(file) {
-      readr::write_csv(analysis()$correlation, file)
-    }
-  )
-
+  
   output$download_long_format <- downloadHandler(
     filename = function() {
       paste0("long_format_contributions_", Sys.Date(), ".csv")
     },
     content = function(file) {
-      result <- analysis()
-      readr::write_csv(
-        build_long_format_table(
-          result$df_med_original,
-          result$df_input,
-          if (isTRUE(result$gradient_applied)) result$df_med else NULL
-        ),
-        file
-      )
+      readr::write_csv(analysis()$long_format_table, file)
     }
   )
+
 }
