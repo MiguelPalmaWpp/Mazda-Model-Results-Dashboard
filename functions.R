@@ -447,6 +447,19 @@ mapping_row_to_list <- function(row) {
   )
 }
 
+apply_channel_mapping_overrides <- function(mapping, col_name) {
+  clean <- normalize_mapping_key(col_name)
+  
+  if(grepl("macro_economic_indicators", clean)) {
+    mapping$sub_category <- "Macroeconomic"
+    if(identical(mapping$funnel, "Base") || is.na(mapping$funnel) || !nzchar(mapping$funnel)) {
+      mapping$funnel <- "Macroeconomic"
+    }
+  }
+  
+  mapping
+}
+
 fallback_channel_mapping <- function(col_name) {
   clean <- normalize_mapping_key(col_name)
   funnel <- infer_funnel_from_name(col_name)
@@ -517,7 +530,7 @@ fallback_channel_mapping <- function(col_name) {
     channel <- category <- sub_category <- funnel <- sp_channel <- "Base"
   }
   
-  list(
+  apply_channel_mapping_overrides(list(
     channel = channel,
     category = category,
     sub_category = sub_category,
@@ -526,7 +539,7 @@ fallback_channel_mapping <- function(col_name) {
     sp_channel = sp_channel,
     sp_agg = sp_agg,
     mapping_source = "fallback rules"
-  )
+  ), col_name)
 }
 
 get_channel_mapping <- function(col_name) {
@@ -534,7 +547,7 @@ get_channel_mapping <- function(col_name) {
   lookup_key <- normalize_mapping_key(col_name)
   
   if(nrow(mapping) > 0 && lookup_key %in% mapping$Variable_Key) {
-    return(mapping_row_to_list(mapping[match(lookup_key, mapping$Variable_Key), ]))
+    return(apply_channel_mapping_overrides(mapping_row_to_list(mapping[match(lookup_key, mapping$Variable_Key), ]), col_name))
   }
   
   fallback_channel_mapping(col_name)

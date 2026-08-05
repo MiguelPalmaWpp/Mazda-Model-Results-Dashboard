@@ -142,6 +142,7 @@ var input = document.getElementById(msg.id);
 if (!input) return;
 
 input.value = '';
+$(input).trigger('change');
 
 var container = input.closest('.shiny-input-container, .form-group');
 if (!container) return;

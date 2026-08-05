@@ -51,6 +51,7 @@ ui <- fluidPage(
         max-height: 220px !important;
       }
       .mazda-sidebar .btn { font-size: 11.5px; padding: 5px 10px; }
+      .mazda-reset-btn { width: 100%; margin: 4px 0 8px; }
       .sidebar-step-title {
         align-items: center;
         display: inline-flex;
@@ -127,6 +128,15 @@ ui <- fluidPage(
         gap: 16px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+      .comparison-empty {
+        background: #f8fbff;
+        border: 1px solid #dbe7f3;
+        border-left: 4px solid #5B9BD5;
+        border-radius: 7px;
+        color: #475569;
+        font-size: 13px;
+        padding: 14px 16px;
+      }
       .dataTables_wrapper { font-size: 12px; }
       .dt-toolbar {
         align-items: center;
@@ -134,24 +144,6 @@ ui <- fluidPage(
         gap: 12px;
         justify-content: space-between;
         margin-bottom: 12px;
-      }
-      .dt-buttons-wrap .dt-buttons { display: flex; gap: 6px; }
-      .dt-buttons .btn,
-      .dt-button,
-      .btn-dt {
-        background: #ffffff !important;
-        border: 1px solid #5B9BD5 !important;
-        border-radius: 6px !important;
-        color: #3f7db8 !important;
-        font-size: 11px !important;
-        font-weight: 650 !important;
-        padding: 5px 10px !important;
-      }
-      .dt-buttons .btn:hover,
-      .dt-button:hover,
-      .btn-dt:hover {
-        background: #eef6ff !important;
-        color: #2f679e !important;
       }
       .dt-search-wrap .dataTables_filter { margin: 0; }
       .dt-search-wrap .dataTables_filter label { margin: 0; }
@@ -355,6 +347,7 @@ ui <- fluidPage(
             multiple = TRUE,
             accept = c(".csv", ".xlsx", ".xlsm", ".xls")
           ),
+          actionButton("reset_analysis_files", "Reset Model Files", class = "btn-outline-secondary mazda-reset-btn"),
           uiOutput("file_status"),
           class = "sidebar-card-inputs"
         ),
@@ -395,6 +388,13 @@ ui <- fluidPage(
             fileInput("gradient_file", "Gradient File", accept = c(".csv", ".xlsx", ".xlsm", ".xls")),
             uiOutput("gradient_sheet_ui")
           ),
+          fileInput(
+            "previous_model_report",
+            "Previous Model Report",
+            accept = c(".xlsx", ".xlsm", ".xls")
+          ),
+          uiOutput("previous_contribution_sheet_ui"),
+          uiOutput("previous_roi_sheet_ui"),
           class = "sidebar-card-gradient"
         ),
         card(
@@ -461,10 +461,41 @@ ui <- fluidPage(
                 DTOutput("roi_table")
               )
             ),
+            tabPanel(
+              "Compare Previous Model",
+              uiOutput("previous_model_state"),
+              conditionalPanel(
+                "output.has_previous_comparison",
+                card(
+                  "Metric Summary",
+                  tags$div(
+                    class = "ds-pill-group",
+                    radioButtons(
+                      "previous_compare_granularity",
+                      "Granularity",
+                      choices = c("Daily", "Weekly", "Monthly"),
+                      selected = "Weekly",
+                      inline = TRUE
+                    )
+                  ),
+                  DTOutput("previous_metric_summary_table")
+                ),
+                card("Variable Comparison", DTOutput("previous_variable_table")),
+                tags$div(
+                  class = "model-fit-grid",
+                  tags$div(
+                    class = "model-fit-card",
+                    card("Actual vs Predicted", plotlyOutput("previous_fit_plot", height = "410px"))
+                  ),
+                  tags$div(
+                    class = "model-fit-card",
+                    card("Residual Comparison", plotlyOutput("previous_error_plot", height = "410px"))
+                  )
+                )
+              )
+            ),
             tabPanel("Historical Contributions", card("Historical Contributions Preview", DTOutput("historical_table"))),
-            tabPanel("Pre vs Post", card("Pre vs Post Contribution", DTOutput("pre_vs_post_table"))),
-            tabPanel("Diagnostics", card("Diagnostics", verbatimTextOutput("diagnostics"))),
-            tabPanel("Metrics Over Time", card("Monthly Metrics", DTOutput("metrics_over_time")))
+            tabPanel("Diagnostics", card("Diagnostics", verbatimTextOutput("diagnostics")))
           )
         )
       )

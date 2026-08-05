@@ -246,15 +246,16 @@ build_fit_scatter_plot <- function(df, title) {
     )
   }
 
-  p <- plot_ly() %>%
-    add_lines(
-      x = c(min_val, max_val),
-      y = c(min_val, max_val),
-      name = "Perfect Fit",
-      line = list(color = "#94a3b8", width = 1.5, dash = "dash"),
-      hoverinfo = "skip",
-      showlegend = FALSE
-    ) %>%
+  p <- plot_ly(
+    x = c(min_val, max_val),
+    y = c(min_val, max_val),
+    type = "scatter",
+    mode = "lines",
+    name = "Perfect Fit",
+    line = list(color = "#94a3b8", width = 1.5, dash = "dash"),
+    hoverinfo = "skip",
+    showlegend = FALSE
+  ) %>%
     add_markers(
       data = df_plot,
       x = ~Actual,

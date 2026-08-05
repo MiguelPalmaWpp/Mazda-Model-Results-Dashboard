@@ -56,7 +56,7 @@ build_historical_contributions_table <- function(df_med) {
     setNames(sub("^Contrib_", "", colnames(.)))
 }
 
-build_long_format_table <- function(df_med_original, df_input, df_med_gradient = NULL) {
+build_long_format_table <- function(df_med_original, df_input, df_med_gradient = NULL, cftp_data = NULL) {
   contrib_cols <- colnames(df_med_original)[grepl("^Contrib_", colnames(df_med_original))]
   if ("Base" %in% colnames(df_med_original)) {
     contrib_cols <- c(contrib_cols, "Base")
@@ -139,13 +139,27 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
     df_long <- df_long %>% mutate(contribution_gradient = contribution)
   }
   
+  if (!is.null(cftp_data) && nrow(cftp_data) > 0) {
+    df_cftp_long <- cftp_data %>%
+      select(Month, CFTP = AVG_CFTP) %>%
+      distinct(Month, .keep_all = TRUE)
+    
+    df_long <- df_long %>%
+      mutate(Month = floor_date(as.Date(Date), "month")) %>%
+      left_join(df_cftp_long, by = "Month") %>%
+      select(-Month)
+  } else {
+    df_long <- df_long %>% mutate(CFTP = NA_real_)
+  }
+  
   df_long %>%
     mutate(
       contribution = replace_na(contribution, 0),
       spend = replace_na(spend, 0),
+      CFTP = as.numeric(CFTP),
       contribution_gradient = coalesce(contribution_gradient, contribution)
     ) %>%
-    select(Date, variable, contribution, spend, contribution_gradient) %>%
+    select(Date, variable, contribution, spend, CFTP, contribution_gradient) %>%
     arrange(Date, variable) %>%
     round_numeric_columns(3)
 }

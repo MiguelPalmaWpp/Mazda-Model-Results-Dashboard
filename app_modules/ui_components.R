@@ -44,26 +44,8 @@ dt_table <- function(data, page_length = 10, scroll_x = TRUE) {
     data,
     rownames = FALSE,
     filter = "top",
-    extensions = "Buttons",
     options = list(
-      dom = "<'dt-toolbar'<'dt-buttons-wrap'B><'dt-search-wrap'f>>rt<'dt-footer'<'dt-info-wrap'i><'dt-page-wrap'p>>",
-      buttons = list(
-        list(
-          extend = "copy",
-          className = "btn-dt",
-          exportOptions = list(modifier = list(page = "all", search = "applied", order = "applied"))
-        ),
-        list(
-          extend = "csv",
-          className = "btn-dt",
-          exportOptions = list(modifier = list(page = "all", search = "applied", order = "applied"))
-        ),
-        list(
-          extend = "excel",
-          className = "btn-dt",
-          exportOptions = list(modifier = list(page = "all", search = "applied", order = "applied"))
-        )
-      ),
+      dom = "<'dt-toolbar'<'dt-search-wrap'f>>rt<'dt-footer'<'dt-info-wrap'i><'dt-page-wrap'p>>",
       pageLength = page_length,
       lengthMenu = c(5, 10, 25, 50, 100),
       scrollX = scroll_x,

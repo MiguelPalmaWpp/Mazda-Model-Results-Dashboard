@@ -5,6 +5,7 @@
 - `cftp.R`: Consumer Facing Transaction Price AVG loading, validation, month matching, and revenue diagnostics.
 - `roi_engine.R`: ROI table construction and ROI workbook sheet writers.
 - `model_fit_plots.R`: Plotly/ggplot model-fit charts.
+- `previous_model.R`: previous-report loading, model comparison tables, charts, and Excel export.
 - `report_tables.R`: DT tables and app report table builders.
 - `analysis.R`: main analysis orchestration and Excel workbook builder.
 - `ui_components.R`: small reusable UI helpers.

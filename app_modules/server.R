@@ -1,5 +1,6 @@
 server <- function(input, output, session) {
   full_period_tab_inserted <- reactiveVal(FALSE)
+  pre_vs_post_tab_inserted <- reactiveVal(FALSE)
 
   observe({
     if (isTRUE(input$compare_new_period) && !isTRUE(full_period_tab_inserted())) {
@@ -22,6 +23,25 @@ server <- function(input, output, session) {
       removeTab(inputId = "main_tabs", target = "Full Period Contribution")
       full_period_tab_inserted(FALSE)
     }
+    
+    if (isTRUE(input$compare_new_period) && !isTRUE(pre_vs_post_tab_inserted())) {
+      insertTab(
+        inputId = "main_tabs",
+        target = "Historical Contributions",
+        position = "after",
+        select = FALSE,
+        tabPanel("Pre vs Post", card("Pre vs Post Contribution", DTOutput("pre_vs_post_table")))
+      )
+      pre_vs_post_tab_inserted(TRUE)
+    } else if (!isTRUE(input$compare_new_period) && isTRUE(pre_vs_post_tab_inserted())) {
+      removeTab(inputId = "main_tabs", target = "Pre vs Post")
+      pre_vs_post_tab_inserted(FALSE)
+    }
+  })
+  
+  observeEvent(input$reset_analysis_files, {
+    session$sendCustomMessage("resetFileInput", list(id = "all_files"))
+    showNotification("Model input files were reset.", type = "message", duration = 4)
   })
 
   output$gradient_sheet_ui <- renderUI({
@@ -82,6 +102,57 @@ server <- function(input, output, session) {
       selected = choices[1],
       options = list(dropdownParent = "body", maxOptions = 1000)
     )
+  })
+  
+  previous_model_sheets <- reactive({
+    req(input$previous_model_report)
+    previous_path <- materialize_upload(input$previous_model_report, "Previous Model Report")
+    previous_sheet_defaults(previous_path)
+  })
+  
+  output$previous_contribution_sheet_ui <- renderUI({
+    req(input$previous_model_report)
+    defaults <- previous_model_sheets()
+    selectizeInput(
+      "previous_contribution_sheet",
+      "Previous Contribution Sheet",
+      choices = defaults$sheets,
+      selected = defaults$contribution_sheet,
+      options = list(dropdownParent = "body")
+    )
+  })
+  
+  output$previous_roi_sheet_ui <- renderUI({
+    req(input$previous_model_report)
+    defaults <- previous_model_sheets()
+    selectizeInput(
+      "previous_roi_sheet",
+      "Previous ROI Sheet",
+      choices = defaults$sheets,
+      selected = defaults$roi_sheet,
+      options = list(dropdownParent = "body")
+    )
+  })
+  
+  previous_model_report <- reactive({
+    if (is.null(input$previous_model_report)) {
+      return(NULL)
+    }
+    
+    tryCatch({
+      defaults <- previous_model_sheets()
+      contribution_sheet <- input$previous_contribution_sheet %||% defaults$contribution_sheet
+      roi_sheet <- input$previous_roi_sheet %||% defaults$roi_sheet
+      load_previous_model_report(
+        materialize_upload(input$previous_model_report, "Previous Model Report"),
+        contribution_sheet = contribution_sheet,
+        roi_sheet = roi_sheet,
+        aggregation_method = input$aggregation_method %||% "sum"
+      )
+    }, error = function(e) {
+      showNotification(paste("Previous model report could not be loaded:", conditionMessage(e)), type = "error", duration = 12)
+      NULL
+    })
   })
 
   selected_files <- reactive({
@@ -315,6 +386,30 @@ server <- function(input, output, session) {
 
     card("Model Metrics with Gradient", DTOutput("overview_metrics_gradient"))
   })
+  
+  previous_model_comparison <- reactive({
+    previous_report <- previous_model_report()
+    if (is.null(previous_report)) {
+      return(NULL)
+    }
+    
+    result <- tryCatch(analysis(), error = function(e) NULL)
+    if (is.null(result)) {
+      return(NULL)
+    }
+    
+    tryCatch({
+      build_previous_model_comparison(result, previous_report)
+    }, error = function(e) {
+      showNotification(paste("Previous model comparison failed:", conditionMessage(e)), type = "error", duration = 12)
+      NULL
+    })
+  })
+  
+  output$has_previous_comparison <- reactive({
+    !is.null(previous_model_comparison())
+  })
+  outputOptions(output, "has_previous_comparison", suspendWhenHidden = FALSE)
 
   output$overview_metrics_gradient <- renderDT({
     result <- analysis()
@@ -348,11 +443,57 @@ server <- function(input, output, session) {
     granularity <- input$fit_granularity %||% "Daily"
     build_error_behavior_plot(model_fit_data(result, granularity), granularity)
   })
-
-  output$metrics_over_time <- renderDT({
-    dt_table(analysis()$metrics_over_time, page_length = 12)
+  
+  output$previous_model_state <- renderUI({
+    if (is.null(input$previous_model_report)) {
+      return(tags$div(class = "comparison-empty", "Upload a previous model report to compare."))
+    }
+    
+    comparison <- previous_model_comparison()
+    if (is.null(comparison)) {
+      return(tags$div(class = "comparison-empty", "Run the analysis to compare against the previous model report."))
+    }
+    
+    previous_report <- previous_model_report()
+    tags$div(
+      class = "comparison-empty",
+      paste(
+        "Comparing current model against:", comparison$filename,
+        "| Contribution sheet:", previous_report$contribution_sheet,
+        "| ROI sheet:", previous_report$roi_sheet,
+        "| Previous prediction:", previous_report$prediction_source,
+        "|", comparison$weekly_message
+      )
+    )
+  })
+  
+  output$previous_metric_summary_table <- renderDT({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    granularity <- input$previous_compare_granularity %||% "Weekly"
+    dt_table(comparison$metrics %>% filter(Granularity == granularity), page_length = 10)
   }, server = FALSE)
-
+  
+  output$previous_variable_table <- renderDT({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    dt_table(comparison$variable, page_length = 25)
+  }, server = FALSE)
+  
+  output$previous_fit_plot <- renderPlotly({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    granularity <- input$previous_compare_granularity %||% "Weekly"
+    build_comparison_fit_plot(comparison, granularity)
+  })
+  
+  output$previous_error_plot <- renderPlotly({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    granularity <- input$previous_compare_granularity %||% "Weekly"
+    build_comparison_error_plot(comparison, granularity)
+  })
+  
   output$roi_version_switch <- renderUI({
     result <- analysis()
     if (!isTRUE(result$gradient_applied)) {
@@ -402,6 +543,7 @@ server <- function(input, output, session) {
 
   output$full_period_table <- renderDT({
     result <- analysis()
+    validate(need(isTRUE(result$compare_new_period), "Enable Compare New Period to view Full Period Contribution."))
     table_data <- if (isTRUE(result$gradient_applied) && identical(input$full_period_version, "gradient")) {
       result$full_period_table_gradient
     } else {
@@ -416,7 +558,9 @@ server <- function(input, output, session) {
   }, server = FALSE)
 
   output$pre_vs_post_table <- renderDT({
-    dt_table(analysis()$pre_vs_post_table, page_length = 15)
+    result <- analysis()
+    validate(need(isTRUE(result$compare_new_period), "Enable Compare New Period to view Pre vs Post."))
+    dt_table(result$pre_vs_post_table, page_length = 15)
   }, server = FALSE)
 
   output$diagnostics <- renderText({
@@ -463,7 +607,8 @@ server <- function(input, output, session) {
         analysis = analysis(),
         cutoff_date = input$cutoff_date,
         roi_from = if (isTRUE(input$compare_new_period)) input$roi_range[1] else NULL,
-        roi_to = if (isTRUE(input$compare_new_period)) input$roi_range[2] else NULL
+        roi_to = if (isTRUE(input$compare_new_period)) input$roi_range[2] else NULL,
+        previous_comparison = previous_model_comparison()
       )
       saveWorkbook(wb, file, overwrite = TRUE)
     }

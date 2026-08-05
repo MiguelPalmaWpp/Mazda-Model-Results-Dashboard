@@ -9,9 +9,10 @@ Use this application to:
 -   Upload Mazda model output files.
 -   Review model fit at daily, weekly, and monthly levels.
 -   Analyze ROI using spend, model contribution units, and monthly Consumer Facing Transaction Price data.
+-   Compare the current model against a previous model report.
 -   Compare pre/post periods when needed.
 -   Apply optional gradient adjustments.
--   Export Excel, correlation, and long-format contribution files.
+-   Export Excel and long-format contribution files.
 
 ## 2. Required Input Files
 
@@ -75,19 +76,36 @@ When gradient is applied, the app shows switch controls so you can compare:
 -   No Gradient
 -   Gradient
 
-## 5. Running the Analysis
+## 5. Optional Previous Model Comparison
+
+Use **Previous Model Report** when you want to compare the current run against an earlier Excel report.
+
+The previous report can be either:
+
+-   a current app report with `Summary`, `ROI`, and optionally `Full Period Contribution`;
+-   a legacy metrics report with `Daily`, `Weekly`, `Monthly`, `ROI`, and `pre_vs_post`.
+
+After upload, the app detects and lets you edit:
+
+-   `Previous Contribution Sheet`: usually `Historical Contributions` or `med_contrib`.
+-   `Previous ROI Sheet`: usually `ROI`.
+
+The comparison uses historical contributions from the selected sheet. If the sheet has `Pred`, `Prediction`, or `Predicted`, that column is used as previous prediction. Otherwise, previous prediction is rebuilt as the sum of contribution columns by date. Metrics use the current model's `Actual` values on common dates.
+
+## 6. Running the Analysis
 
 1.  Upload the model files.
 2.  Upload the CFTP file.
 3.  Select the CFTP sheet and final nameplate.
 4.  Optional: enable **Compare New Period**.
 5.  Optional: enable **Apply Gradient Adjustment**.
-6.  Choose the aggregation method: `sum` or `mean`.
-7.  Click **Run Analysis**.
+6.  Optional: upload a **Previous Model Report**.
+7.  Choose the aggregation method: `sum` or `mean`.
+8.  Click **Run Analysis**.
 
 The app will load the files, calculate metrics, build contribution and ROI tables, and enable downloads.
 
-## 6. Tabs and Outputs
+## 7. Tabs and Outputs
 
 ### Overview
 
@@ -99,6 +117,7 @@ Shows:
 
 -   Time series chart for actual vs predicted values.
 -   Scatter plot for actual vs predicted values.
+-   Error behavior chart with residuals over time and residual distribution.
 -   Granularity options: Daily, Weekly, Monthly.
 
 ### ROI
@@ -117,6 +136,15 @@ Important ROI columns:
 
 Rows in `Category = Base` are always sorted last.
 
+### Compare Previous Model
+
+Shows comparison outputs when a previous model report is uploaded:
+
+-   metric summary for the selected granularity;
+-   variable comparison with current/previous units and ROI;
+-   comparison status based on whether unit difference is within or above 10%;
+-   explicit Weekly match status when weeks do not fully align.
+
 ### Historical Contributions
 
 Shows a preview of historical contribution values by date.
@@ -125,15 +153,15 @@ Shows a preview of historical contribution values by date.
 
 Shows contribution units before and after the selected cutoff date when **Compare New Period** is enabled.
 
+### Full Period Contribution
+
+Shows full-period contribution and ROI only when **Compare New Period** is enabled. If **Compare New Period** is disabled, the `ROI` tab already represents the full available period.
+
 ### Diagnostics
 
 Shows file detection details, detected columns, date ranges, CFTP information, missing CFTP months, and correlation split output.
 
-### Metrics Over Time
-
-Shows monthly model performance metrics.
-
-## 7. ROI Calculation
+## 8. ROI Calculation
 
 ROI is calculated in these steps:
 
@@ -157,19 +185,19 @@ ROI = Revenue / Spend
 
 Negative contribution rows do not calculate revenue or ROI.
 
-## 8. Excel Report
+## 9. Excel Report
 
 ### Download Excel Report
 
-Creates an Excel workbook with model results, metrics, ROI, full-period contribution, historical contributions, and pre/post tables.
+Creates an Excel workbook with model results, metrics, ROI, full-period contribution, historical contributions, pre/post tables, and model comparison when a previous report is uploaded.
 
 The export reuses the already calculated ROI tables from **Run Analysis** to reduce download time.
 
 ### Download Long Format CSV
 
-Exports the precomputed long-format contribution table for downstream analysis. This includes contribution, spend, and gradient-adjusted contribution fields when available.
+Exports the precomputed long-format contribution table for downstream analysis. This includes contribution, spend, monthly CFTP, and gradient-adjusted contribution fields when available.
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### The app does not detect my model files
 
@@ -203,7 +231,7 @@ Base variables can appear in contribution tables, but `Category = Base` is sorte
 
 Large model files can still take time to write, especially if many sheets and rows are included. Run Analysis first and wait for completion before exporting.
 
-## 10. Recommended Workflow
+## 11. Recommended Workflow
 
 1.  Upload all required model files.
 2.  Upload the CFTP file.
