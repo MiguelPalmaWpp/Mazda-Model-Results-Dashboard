@@ -1,6 +1,15 @@
 server <- function(input, output, session) {
   full_period_tab_inserted <- reactiveVal(FALSE)
   pre_vs_post_tab_inserted <- reactiveVal(FALSE)
+  
+  download_filename <- function(prefix, extension) {
+    result <- analysis()
+    nameplate <- result$cftp_nameplate %||% "unknown_nameplate"
+    safe_nameplate <- gsub("[^A-Za-z0-9]+", "_", nameplate)
+    safe_nameplate <- gsub("^_+|_+$", "", safe_nameplate)
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    paste0(prefix, "_", safe_nameplate, "_", timestamp, ".", extension)
+  }
 
   observe({
     if (isTRUE(input$compare_new_period) && !isTRUE(full_period_tab_inserted())) {
@@ -600,7 +609,7 @@ server <- function(input, output, session) {
 
   output$download_excel <- downloadHandler(
     filename = function() {
-      paste0("mazda_model_results_", Sys.Date(), ".xlsx")
+      download_filename("mazda_model_results", "xlsx")
     },
     content = function(file) {
       wb <- build_excel_report(
@@ -616,7 +625,7 @@ server <- function(input, output, session) {
   
   output$download_long_format <- downloadHandler(
     filename = function() {
-      paste0("long_format_contributions_", Sys.Date(), ".csv")
+      download_filename("long_format_contributions", "csv")
     },
     content = function(file) {
       readr::write_csv(analysis()$long_format_table, file)

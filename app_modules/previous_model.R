@@ -225,6 +225,14 @@ normalize_previous_roi <- function(df) {
   pct_col <- intersect(c("% Contribution", "%Contribution", "%Contribution"), names(df))[1]
   has_roi <- "ROI" %in% names(df)
   has_halo_roi <- "Halo ROI" %in% names(df)
+  roi_values <- rep(NA_real_, nrow(df))
+  if (has_roi) {
+    roi_values <- suppressWarnings(as.numeric(df[["ROI"]]))
+  }
+  if (has_halo_roi) {
+    halo_values <- suppressWarnings(as.numeric(df[["Halo ROI"]]))
+    roi_values <- coalesce(roi_values, halo_values)
+  }
   
   df %>%
     transmute(
@@ -235,15 +243,7 @@ normalize_previous_roi <- function(df) {
       Previous_Units = if (!is.na(units_col)) suppressWarnings(as.numeric(.data[[units_col]])) else NA_real_,
       Previous_Pct_Contribution = if (!is.na(pct_col)) suppressWarnings(as.numeric(.data[[pct_col]])) else NA_real_,
       Previous_Spend = if ("Spend" %in% names(df)) suppressWarnings(as.numeric(.data[["Spend"]])) else NA_real_,
-      Previous_ROI = case_when(
-        has_roi & has_halo_roi ~ coalesce(
-          suppressWarnings(as.numeric(.data[["ROI"]])),
-          suppressWarnings(as.numeric(.data[["Halo ROI"]]))
-        ),
-        has_roi ~ suppressWarnings(as.numeric(.data[["ROI"]])),
-        has_halo_roi ~ suppressWarnings(as.numeric(.data[["Halo ROI"]])),
-        TRUE ~ NA_real_
-      )
+      Previous_ROI = roi_values
     ) %>%
     distinct(variable_key, .keep_all = TRUE)
 }
