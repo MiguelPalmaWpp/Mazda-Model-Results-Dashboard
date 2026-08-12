@@ -211,6 +211,107 @@ read_model_csv <- function(path, file_label) {
   readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
 }
 
+detect_model_row_offset <- function(df_mff, df_pred, kpi_col, offsets = -2:3) {
+  if (is.na(kpi_col) || !kpi_col %in% colnames(df_mff)) {
+    stop(
+      "Could not validate model row alignment because the KPI column was not detected in the MFF. ",
+      "Rename the target column to include 'KPI' or 'Actual'."
+    )
+  }
+  
+  model_rows <- as.integer(df_pred$row)
+  observed <- suppressWarnings(as.numeric(df_pred$observed))
+  kpi_values <- suppressWarnings(as.numeric(df_mff[[kpi_col]]))
+  
+  scores <- bind_rows(lapply(offsets, function(offset) {
+    mff_rows <- model_rows + offset
+    valid <- !is.na(mff_rows) & mff_rows >= 1 & mff_rows <= nrow(df_mff) & is.finite(observed)
+    matched_values <- rep(NA_real_, length(model_rows))
+    matched_values[valid] <- kpi_values[mff_rows[valid]]
+    comparable <- valid & is.finite(matched_values)
+    exact_count <- sum(comparable & abs(matched_values - observed) < 1e-9)
+    mae <- if (any(comparable)) mean(abs(matched_values[comparable] - observed[comparable]), na.rm = TRUE) else Inf
+    corr <- if (sum(comparable) >= 2) {
+      suppressWarnings(cor(matched_values[comparable], observed[comparable], use = "complete.obs"))
+    } else {
+      NA_real_
+    }
+    tibble(
+      offset = offset,
+      valid_count = sum(valid),
+      comparable_count = sum(comparable),
+      exact_count = exact_count,
+      mae = mae,
+      correlation = corr
+    )
+  }))
+  
+  best <- scores %>%
+    arrange(desc(exact_count), mae, desc(coalesce(correlation, -Inf)), abs(offset)) %>%
+    slice(1)
+  
+  if (nrow(best) == 0 ||
+      best$comparable_count == 0 ||
+      best$exact_count < max(1, floor(0.95 * nrow(df_pred)))) {
+    score_text <- paste(
+      apply(scores, 1, function(row) {
+        paste0("offset ", row[["offset"]], ": exact ", row[["exact_count"]],
+               "/", nrow(df_pred), ", MAE ", round(as.numeric(row[["mae"]]), 4))
+      }),
+      collapse = "; "
+    )
+    stop(
+      "Could not safely align model output rows to the MFF using observed KPI values. ",
+      "Checked offsets -2 to +3. Scores: ", score_text
+    )
+  }
+  
+  offset <- as.integer(best$offset)
+  mff_rows <- model_rows + offset
+  valid <- mff_rows >= 1 & mff_rows <= nrow(df_mff)
+  if (!all(valid)) {
+    stop(
+      "Detected row offset ", offset, " but some matched MFF rows fall outside the uploaded MFF range."
+    )
+  }
+  
+  first_idx <- which.min(model_rows)
+  last_idx <- which.max(model_rows)
+  list(
+    offset = offset,
+    scores = scores,
+    exact_count = as.integer(best$exact_count),
+    comparable_count = as.integer(best$comparable_count),
+    mae = as.numeric(best$mae),
+    correlation = as.numeric(best$correlation),
+    first_model_row = model_rows[first_idx],
+    first_mff_row = mff_rows[first_idx],
+    first_date = as.Date(df_mff$Date[mff_rows[first_idx]]),
+    last_model_row = model_rows[last_idx],
+    last_mff_row = mff_rows[last_idx],
+    last_date = as.Date(df_mff$Date[mff_rows[last_idx]])
+  )
+}
+
+format_model_row_alignment_note <- function(alignment) {
+  paste0(
+    "Model row offset detected: ", sprintf("%+d", alignment$offset),
+    " | Row match exact count: ", alignment$exact_count, " / ", alignment$comparable_count,
+    " | First matched model row: ", alignment$first_model_row,
+    " -> MFF row ", alignment$first_mff_row,
+    " -> ", as.character(alignment$first_date),
+    " | Last matched model row: ", alignment$last_model_row,
+    " -> MFF row ", alignment$last_mff_row,
+    " -> ", as.character(alignment$last_date),
+    if (alignment$offset != 0) {
+      paste0(" | Model row indexes are offset from the uploaded MFF row order. ",
+             "The app adjusted the join using detected offset ", sprintf("%+d", alignment$offset), ".")
+    } else {
+      ""
+    }
+  )
+}
+
 read_upload_preview <- function(file_row, n_max = 5) {
   path <- materialize_upload(file_row, "Uploaded file")
   ext <- tolower(tools::file_ext(path))
@@ -297,7 +398,10 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
     stop("predictions.csv and contributions.csv do not contain the same model row indexes.")
   }
 
-  if (max(pred_rows, na.rm = TRUE) > nrow(df_mff) || min(pred_rows, na.rm = TRUE) < 1) {
+  alignment <- detect_model_row_offset(df_mff, df_pred, kpi_col)
+  pred_mff_rows <- pred_rows + alignment$offset
+  
+  if (max(pred_mff_rows, na.rm = TRUE) > nrow(df_mff) || min(pred_mff_rows, na.rm = TRUE) < 1) {
     stop(
       "The uploaded MFF does not contain enough rows to match the model output row indexes. ",
       "Upload the exact MFF used by the model run."
@@ -306,12 +410,12 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
 
   mff_non_spend_cols <- c("Date", "Actual", "Row", kpi_col[!is.na(kpi_col)])
   date_lookup <- df_mff %>%
-    select(Row, Date, everything())
+    select(MFF_Row = Row, Date, everything())
 
   df_actual <- df_pred %>%
-    transmute(Row = as.integer(row), Actual = as.numeric(observed)) %>%
-    left_join(date_lookup %>% select(-any_of("Actual")), by = "Row") %>%
-    select(Date, Actual, everything(), -Row, -any_of(kpi_col[!is.na(kpi_col)]))
+    transmute(Row = as.integer(row), MFF_Row = Row + alignment$offset, Actual = as.numeric(observed)) %>%
+    left_join(date_lookup %>% select(-any_of("Actual")), by = "MFF_Row") %>%
+    select(Date, Actual, everything(), -Row, -MFF_Row, -any_of(kpi_col[!is.na(kpi_col)]))
 
   contrib_cols_raw <- setdiff(colnames(df_contrib_raw), "row")
   contrib_names <- make_contribution_names(contrib_cols_raw)
@@ -324,10 +428,10 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
   )
 
   df_med <- df_contrib_raw %>%
-    mutate(Row = as.integer(row)) %>%
-    select(Row, all_of(contrib_cols_raw)) %>%
+    mutate(Row = as.integer(row), MFF_Row = Row + alignment$offset) %>%
+    select(Row, MFF_Row, all_of(contrib_cols_raw)) %>%
     left_join(df_pred %>% transmute(Row = as.integer(row), Pred = as.numeric(fitted)), by = "Row") %>%
-    left_join(date_lookup %>% select(Row, Date), by = "Row") %>%
+    left_join(date_lookup %>% select(MFF_Row, Date), by = "MFF_Row") %>%
     select(Date, Pred, all_of(contrib_cols_raw))
   colnames(df_med)[match(contrib_cols_raw, colnames(df_med))] <- contrib_names
 
@@ -359,11 +463,17 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
       input_format = "New model outputs",
       kpi_column = if (is.na(kpi_col)) "observed from predictions.csv" else kpi_col,
       pred_column = "fitted",
-      row_note = "Row was created from the uploaded MFF row order. The MFF must be the exact file used by the model run.",
+      row_note = format_model_row_alignment_note(alignment),
       mff_row_count = nrow(df_mff),
       prediction_row_range = range(pred_rows, na.rm = TRUE),
+      matched_mff_row_range = range(pred_mff_rows, na.rm = TRUE),
       contribution_row_range = range(contrib_rows, na.rm = TRUE),
       row_match_count = length(pred_rows),
+      row_offset = alignment$offset,
+      row_alignment_exact_count = alignment$exact_count,
+      row_alignment_comparable_count = alignment$comparable_count,
+      row_alignment_mae = alignment$mae,
+      row_alignment_correlation = alignment$correlation,
       contribution_summary_used = summary_used,
       contribution_summary_message = if (summary_used) {
         "contribution_summary.csv was used for full-period contribution percentages."

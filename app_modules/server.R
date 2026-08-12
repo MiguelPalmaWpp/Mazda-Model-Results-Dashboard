@@ -113,51 +113,209 @@ server <- function(input, output, session) {
     )
   })
   
+  output$previous_model_upload_ui <- renderUI({
+    if (identical(input$previous_model_mode, "long_format")) {
+      return(fileInput(
+        "previous_model_long_format",
+        "Previous Long Format",
+        accept = c(".csv", ".xlsx", ".xlsm", ".xls")
+      ))
+    }
+    
+    fileInput(
+      "previous_model_report_excel",
+      "Previous Excel Report",
+      accept = c(".xlsx", ".xlsm", ".xls")
+    )
+  })
+  
+  previous_model_upload <- reactive({
+    if (identical(input$previous_model_mode, "long_format")) {
+      input$previous_model_long_format
+    } else {
+      input$previous_model_report_excel
+    }
+  })
+  
+  previous_model_path <- reactive({
+    upload <- previous_model_upload()
+    req(upload)
+    materialize_upload(upload, "Previous Model Report")
+  })
+  
+  previous_model_cache <- reactiveVal(list(key = NULL, value = NULL))
+  previous_model_cache_status <- reactiveVal("No previous model cached.")
+  
+  previous_model_cache_key <- function(path, mode, sheet, roi_sheet, nameplate, aggregation_method) {
+    info <- file.info(path)
+    paste(
+      normalizePath(path, winslash = "/", mustWork = TRUE),
+      info$size,
+      as.numeric(info$mtime),
+      mode %||% "",
+      sheet %||% "",
+      roi_sheet %||% "",
+      nameplate %||% "",
+      aggregation_method %||% "",
+      sep = "|"
+    )
+  }
+  
   previous_model_sheets <- reactive({
-    req(input$previous_model_report)
-    previous_path <- materialize_upload(input$previous_model_report, "Previous Model Report")
-    previous_sheet_defaults(previous_path)
+    req(previous_model_path())
+    previous_sheet_defaults(previous_model_path())
   })
   
-  output$previous_contribution_sheet_ui <- renderUI({
-    req(input$previous_model_report)
+  output$previous_model_options_ui <- renderUI({
+    req(previous_model_path())
+    previous_path <- previous_model_path()
+    
+    if (identical(input$previous_model_mode, "long_format")) {
+      if (tolower(tools::file_ext(previous_path)) == "csv") {
+        return(tagList(
+          tags$div(class = "comparison-empty", "CSV Long Format selected. Sheet selection is not needed."),
+          uiOutput("previous_long_format_nameplate_ui"),
+          tags$div(class = "comparison-empty", "CSV is the recommended format for large previous long-format files.")
+        ))
+      }
+      
+      sheets <- previous_excel_sheets(previous_path)
+      return(tagList(
+        selectizeInput(
+          "previous_long_format_sheet",
+          "Previous Long Format Sheet",
+          choices = sheets,
+          selected = previous_long_format_sheet_default(previous_path),
+          options = list(dropdownParent = "body")
+        ),
+        uiOutput("previous_long_format_nameplate_ui")
+      ))
+    }
+    
     defaults <- previous_model_sheets()
-    selectizeInput(
-      "previous_contribution_sheet",
-      "Previous Contribution Sheet",
-      choices = defaults$sheets,
-      selected = defaults$contribution_sheet,
-      options = list(dropdownParent = "body")
+    tagList(
+      selectizeInput(
+        "previous_contribution_sheet",
+        "Previous Contribution Sheet",
+        choices = defaults$sheets,
+        selected = defaults$contribution_sheet,
+        options = list(dropdownParent = "body")
+      ),
+      selectizeInput(
+        "previous_roi_sheet",
+        "Previous ROI Sheet",
+        choices = defaults$sheets,
+        selected = defaults$roi_sheet,
+        options = list(dropdownParent = "body")
+      )
     )
   })
   
-  output$previous_roi_sheet_ui <- renderUI({
-    req(input$previous_model_report)
-    defaults <- previous_model_sheets()
+  previous_long_format_nameplates <- reactive({
+    req(identical(input$previous_model_mode, "long_format"))
+    req(previous_model_path())
+    
+    previous_path <- previous_model_path()
+    long_format_sheet <- input$previous_long_format_sheet %||% previous_long_format_sheet_default(previous_path)
+    previous_model_cache_status("Reading previous nameplates...")
+    choices <- previous_long_format_nameplate_choices(previous_path, long_format_sheet)
+    previous_model_cache_status("Previous nameplates loaded.")
+    choices
+  })
+  
+  output$previous_long_format_nameplate_ui <- renderUI({
+    upload <- previous_model_upload()
+    req(upload)
+    choices <- previous_long_format_nameplates()
+    
+    if (length(choices) == 0) {
+      return(tags$div(class = "comparison-empty", "No Nameplate values were found in the selected long format sheet."))
+    }
+    
+    selected <- if (!is.null(input$cftp_nameplate) && input$cftp_nameplate %in% choices) {
+      input$cftp_nameplate
+    } else if (!is.null(input$cftp_nameplate) && normalize_mapping_key(input$cftp_nameplate) %in% normalize_mapping_key(choices)) {
+      choices[match(normalize_mapping_key(input$cftp_nameplate), normalize_mapping_key(choices))]
+    } else {
+      choices[1]
+    }
+    
     selectizeInput(
-      "previous_roi_sheet",
-      "Previous ROI Sheet",
-      choices = defaults$sheets,
-      selected = defaults$roi_sheet,
-      options = list(dropdownParent = "body")
+      "previous_long_format_nameplate",
+      "Previous Nameplate",
+      choices = choices,
+      selected = selected,
+      options = list(dropdownParent = "body", maxOptions = 1000)
     )
   })
   
-  previous_model_report <- reactive({
-    if (is.null(input$previous_model_report)) {
+  previous_model_report <- eventReactive(input$run_analysis, {
+    upload <- previous_model_upload()
+    if (is.null(upload)) {
       return(NULL)
     }
     
     tryCatch({
-      defaults <- previous_model_sheets()
-      contribution_sheet <- input$previous_contribution_sheet %||% defaults$contribution_sheet
-      roi_sheet <- input$previous_roi_sheet %||% defaults$roi_sheet
-      load_previous_model_report(
-        materialize_upload(input$previous_model_report, "Previous Model Report"),
-        contribution_sheet = contribution_sheet,
-        roi_sheet = roi_sheet,
-        aggregation_method = input$aggregation_method %||% "sum"
+      previous_path <- previous_model_path()
+      previous_mode <- input$previous_model_mode %||% "excel_report"
+      long_format_nameplate <- if (identical(input$previous_model_mode, "long_format")) {
+        validate(need(!is.null(input$previous_long_format_nameplate) && nzchar(input$previous_long_format_nameplate),
+                      "Select a Previous Nameplate before running Long Format previous model comparison."))
+        input$previous_long_format_nameplate
+      } else {
+        NULL
+      }
+      
+      previous_sheet <- if (identical(previous_mode, "long_format")) {
+        input$previous_long_format_sheet %||% previous_long_format_sheet_default(previous_path)
+      } else {
+        input$previous_contribution_sheet %||% previous_model_sheets()$contribution_sheet
+      }
+      previous_roi <- if (identical(previous_mode, "long_format")) {
+        NA_character_
+      } else {
+        input$previous_roi_sheet %||% previous_model_sheets()$roi_sheet
+      }
+      cache_key <- previous_model_cache_key(
+        previous_path,
+        previous_mode,
+        previous_sheet,
+        previous_roi,
+        long_format_nameplate,
+        input$aggregation_method %||% "sum"
       )
+      cached <- previous_model_cache()
+      if (identical(cached$key, cache_key) && !is.null(cached$value)) {
+        previous_model_cache_status("Using cached previous model.")
+        return(cached$value)
+      }
+      
+      previous_model_cache_status(if (identical(previous_mode, "long_format")) {
+        "Processing previous long format..."
+      } else {
+        "Processing previous Excel report..."
+      })
+      
+      value <- if (identical(previous_mode, "long_format")) {
+        load_previous_model_report(
+          previous_path,
+          mode = "long_format",
+          long_format_sheet = previous_sheet,
+          long_format_nameplate = long_format_nameplate,
+          aggregation_method = input$aggregation_method %||% "sum"
+        )
+      } else {
+        load_previous_model_report(
+          previous_path,
+          mode = "excel_report",
+          contribution_sheet = previous_sheet,
+          roi_sheet = previous_roi,
+          aggregation_method = input$aggregation_method %||% "sum"
+        )
+      }
+      previous_model_cache(list(key = cache_key, value = value))
+      previous_model_cache_status("Previous file cached.")
+      value
     }, error = function(e) {
       showNotification(paste("Previous model report could not be loaded:", conditionMessage(e)), type = "error", duration = 12)
       NULL
@@ -454,23 +612,32 @@ server <- function(input, output, session) {
   })
   
   output$previous_model_state <- renderUI({
-    if (is.null(input$previous_model_report)) {
-      return(tags$div(class = "comparison-empty", "Upload a previous model report to compare."))
+    if (is.null(previous_model_upload())) {
+      return(tags$div(class = "comparison-empty", "Upload a previous model file to compare."))
     }
     
     comparison <- previous_model_comparison()
     if (is.null(comparison)) {
-      return(tags$div(class = "comparison-empty", "Run the analysis to compare against the previous model report."))
+      return(tags$div(
+        class = "comparison-empty",
+        paste(previous_model_cache_status(), "Run the analysis to compare against the previous model report.")
+      ))
     }
     
     previous_report <- previous_model_report()
+    sheet_message <- if (identical(previous_report$mode, "Long Format")) {
+      paste("| Long format sheet:", previous_report$long_format_sheet, "| Previous nameplate:", previous_report$long_format_nameplate)
+    } else {
+      paste("| Contribution sheet:", previous_report$contribution_sheet, "| ROI sheet:", previous_report$roi_sheet)
+    }
     tags$div(
       class = "comparison-empty",
       paste(
         "Comparing current model against:", comparison$filename,
-        "| Contribution sheet:", previous_report$contribution_sheet,
-        "| ROI sheet:", previous_report$roi_sheet,
+        "| Mode:", previous_report$mode,
+        sheet_message,
         "| Previous prediction:", previous_report$prediction_source,
+        "|", comparison$common_period_message,
         "|", comparison$weekly_message
       )
     )
@@ -588,6 +755,15 @@ server <- function(input, output, session) {
         paste("Prediction column:", diag$pred_column),
         paste("Spend columns:", length(diag$spend_columns)),
         paste("Contribution columns:", length(diag$contribution_columns)),
+        if (!is.null(diag$row_note)) c(
+          "",
+          "Row Alignment",
+          diag$row_note,
+          paste("Model row range:", paste(diag$prediction_row_range, collapse = " to ")),
+          paste("Matched MFF row range:", paste(diag$matched_mff_row_range %||% diag$prediction_row_range, collapse = " to ")),
+          paste("Row alignment MAE:", if (!is.null(diag$row_alignment_mae)) round(diag$row_alignment_mae, 6) else "NA"),
+          paste("Row alignment correlation:", if (!is.null(diag$row_alignment_correlation)) round(diag$row_alignment_correlation, 6) else "NA")
+        ) else NULL,
         "",
         "Date Range",
         paste(as.character(diag$date_range[1]), "to", as.character(diag$date_range[2])),

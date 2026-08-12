@@ -15,6 +15,7 @@ ui <- fluidPage(
       .sidebar-card-settings .card-body { overflow: visible !important; position: relative; z-index: 30; }
       .sidebar-card-settings .card-body { min-height: 165px; }
       .sidebar-card-gradient .card-body { min-height: 86px; max-height: 210px; overflow-y: auto; }
+      .sidebar-card-previous .card-body { min-height: 260px; max-height: 430px; overflow-y: auto; }
       .sidebar-card-export .card-body { min-height: 148px; }
       .mazda-sidebar .form-group { margin-bottom: 10px; }
       .mazda-sidebar label { font-size: 12px; margin-bottom: 4px; }
@@ -381,24 +382,29 @@ ui <- fluidPage(
           class = "sidebar-card-settings"
         ),
         card(
-          step_title("3", "Optional Adjustment"),
+          step_title("3", "Gradient Adjustment"),
           checkboxInput("use_gradient", "Apply Gradient Adjustment", value = FALSE),
           conditionalPanel(
             "input.use_gradient",
             fileInput("gradient_file", "Gradient File", accept = c(".csv", ".xlsx", ".xlsm", ".xls")),
             uiOutput("gradient_sheet_ui")
           ),
-          fileInput(
-            "previous_model_report",
-            "Previous Model Report",
-            accept = c(".xlsx", ".xlsm", ".xls")
-          ),
-          uiOutput("previous_contribution_sheet_ui"),
-          uiOutput("previous_roi_sheet_ui"),
           class = "sidebar-card-gradient"
         ),
         card(
-          step_title("4", "Run and Export"),
+          step_title("4", "Previous Model Report"),
+          radioButtons(
+            "previous_model_mode",
+            "Previous Model Format",
+            choices = c("Excel Report" = "excel_report", "Long Format" = "long_format"),
+            selected = "excel_report"
+          ),
+          uiOutput("previous_model_upload_ui"),
+          uiOutput("previous_model_options_ui"),
+          class = "sidebar-card-previous"
+        ),
+        card(
+          step_title("5", "Run and Export"),
           actionButton("run_analysis", "Run Analysis", class = "btn-primary mazda-run-btn"),
           tags$hr(),
                   tags$div(

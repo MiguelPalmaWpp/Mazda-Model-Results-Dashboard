@@ -16,10 +16,10 @@ build_roi_table <- function(df_med_input, cftp_data,
 
   cftp_revenue <- calculate_cftp_revenue(df_med_input, contrib_cols, cftp_data)
 
-  units <- df_med_input %>%
-    select(all_of(contrib_cols)) %>%
-    summarise(across(everything(), \(x) sum(x, na.rm = TRUE))) %>%
-    pivot_longer(everything(), names_to = "Variable", values_to = "Units")
+  units <- tibble(
+    Variable = contrib_cols,
+    Units = as.numeric(colSums(df_med_input[, contrib_cols, drop = FALSE], na.rm = TRUE))
+  )
 
   if (!is.null(df_pct)) {
     cat("  % Contribution: using model file (df_pct)\n")
@@ -57,10 +57,10 @@ build_roi_table <- function(df_med_input, cftp_data,
     spend_cols <- spend_cols[is_spend_column(spend_cols)]
 
     if (length(spend_cols) > 0) {
-      spend_sums <- df_input_filtered %>%
-        select(all_of(spend_cols)) %>%
-        summarise(across(everything(), \(x) sum(x, na.rm = TRUE))) %>%
-        pivot_longer(everything(), names_to = "spend_col", values_to = "Spend_Total")
+      spend_sums <- tibble(
+        spend_col = spend_cols,
+        Spend_Total = as.numeric(colSums(df_input_filtered[, spend_cols, drop = FALSE], na.rm = TRUE))
+      )
 
       spend_lookup <- setNames(spend_sums$Spend_Total, spend_sums$spend_col)
       spend_lookup_normalized <- setNames(

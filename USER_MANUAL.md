@@ -35,7 +35,7 @@ Upload these files in the **Upload MFF and model output files** control:
 -   **contributions.csv**: must contain `row` and model contribution columns.
 -   **contribution_summary.csv**: optional file with `label` and `share_total`.
 
-For the new format, the MFF must be the exact file used by the model run. The app matches model output rows back to the uploaded MFF row order.
+For the new format, the MFF must be the exact file used by the model run. The app validates model output `row` values against the MFF KPI using `predictions.csv$observed`, detects any constant row offset, and reports the matched MFF row range in Diagnostics.
 
 ## 3. CFTP Input for ROI
 
@@ -78,19 +78,25 @@ When gradient is applied, the app shows switch controls so you can compare:
 
 ## 5. Optional Previous Model Comparison
 
-Use **Previous Model Report** when you want to compare the current run against an earlier Excel report.
+Use **Previous Model Report** when you want to compare the current run against an earlier model output.
 
-The previous report can be either:
+Choose the previous model format:
 
--   a current app report with `Summary`, `ROI`, and optionally `Full Period Contribution`;
--   a legacy metrics report with `Daily`, `Weekly`, `Monthly`, `ROI`, and `pre_vs_post`.
+-   `Excel Report`: a current app report with `Summary`, `ROI`, and optionally `Full Period Contribution`, or a legacy metrics report with `Daily`, `Weekly`, `Monthly`, `ROI`, and `pre_vs_post`.
+-   `Long Format`: an Excel sheet or CSV file with daily rows by variable.
 
-After upload, the app detects and lets you edit:
+The upload control changes with the selected format, so only the relevant previous model file type is shown.
+
+For `Excel Report`, the app detects and lets you edit:
 
 -   `Previous Contribution Sheet`: usually `Historical Contributions` or `med_contrib`.
 -   `Previous ROI Sheet`: usually `ROI`.
 
-The comparison uses historical contributions from the selected sheet. If the sheet has `Pred`, `Prediction`, or `Predicted`, that column is used as previous prediction. Otherwise, previous prediction is rebuilt as the sum of contribution columns by date. Metrics use the current model's `Actual` values on common dates.
+For `Long Format`, use a file that contains `Date`, `Nameplate`, `Variable`, `Contribution`, `Spend`, `Revenue`, `Category`, `Sub-Category`, `Funnel`, and `Channel`. Optional columns such as `AVG_MRSP`, `FY`, and `Quarter` are used when available. `Contribution` is always used for previous model comparison; `Contribution_gradient` is not used to rebuild previous prediction or ROI. For Excel, select the sheet first. For CSV, sheet selection is skipped. The app reads only the `Nameplate` column before analysis, shows a `Previous Nameplate` dropdown, and then processes only the selected nameplate when you click **Run Analysis**.
+
+For large previous long-format files, CSV is recommended because it loads much faster than Excel.
+
+The comparison rebuilds previous prediction from daily contributions and uses the current model's `Actual` values on common dates. In long format mode, previous units, spend, revenue, and ROI are recalculated on the same common dates used for current ROI.
 
 ## 6. Running the Analysis
 
@@ -118,7 +124,7 @@ Shows:
 -   Time series chart for actual vs predicted values.
 -   Scatter plot for actual vs predicted values.
 -   Error behavior chart with residuals over time and residual distribution.
--   Granularity options: Daily, Weekly, Monthly.
+-   Granularity options: Daily, Weekly, Monthly. Weekly periods start on Sunday.
 
 ### ROI
 
@@ -141,7 +147,7 @@ Rows in `Category = Base` are always sorted last.
 Shows comparison outputs when a previous model report is uploaded:
 
 -   metric summary for the selected granularity;
--   variable comparison with current/previous units and ROI;
+-   variable comparison with current/previous units, spend, and ROI;
 -   comparison status based on whether unit difference is within or above 10%;
 -   explicit Weekly match status when weeks do not fully align.
 
@@ -191,6 +197,8 @@ Negative contribution rows do not calculate revenue or ROI.
 
 Creates an Excel workbook with model results, metrics, ROI, full-period contribution, historical contributions, pre/post tables, and model comparison when a previous report is uploaded.
 
+When a previous report is uploaded, the existing `Daily`, `Weekly`, and `Monthly` sheets add `Previous Model` columns next to the current prediction columns, so actual vs current prediction vs previous prediction can be reviewed in the same place.
+
 The export reuses the already calculated ROI tables from **Run Analysis** to reduce download time.
 
 ### Download Long Format CSV
@@ -229,7 +237,7 @@ Base variables can appear in contribution tables, but `Category = Base` is sorte
 
 ### Excel export is slow
 
-Large model files can still take time to write, especially if many sheets and rows are included. Run Analysis first and wait for completion before exporting.
+Large model files can still take time to write, especially if many sheets and rows are included. Run Analysis first and wait for completion before exporting. For previous model long-format comparisons, export the previous long format as CSV when possible; the app can read only the required columns and cache the processed result after Run Analysis.
 
 ## 11. Recommended Workflow
 

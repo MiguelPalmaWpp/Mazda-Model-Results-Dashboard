@@ -94,6 +94,35 @@ calculate_cftp_revenue <- function(df_med_input, contrib_cols, cftp_data) {
         paste(missing_months, collapse = ", "), "\n")
   }
 
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    dt <- data.table::as.data.table(df_med_input[, c("Date", contrib_cols), drop = FALSE])
+    dt[, Month := as.Date(lubridate::floor_date(Date, "month"))]
+    cftp_dt <- data.table::as.data.table(cftp_data[, c("Month", "AVG_CFTP"), drop = FALSE])
+    long_dt <- data.table::melt(
+      dt,
+      id.vars = "Month",
+      measure.vars = contrib_cols,
+      variable.name = "Variable",
+      value.name = "Daily_Units"
+    )
+    long_dt[cftp_dt, AVG_CFTP := i.AVG_CFTP, on = "Month"]
+    revenue_by_var <- long_dt[, .(
+      Revenue = if (any(!is.na(AVG_CFTP) & Daily_Units > 0)) {
+        sum(data.table::fifelse(Daily_Units > 0, Daily_Units * AVG_CFTP, NA_real_), na.rm = TRUE)
+      } else {
+        NA_real_
+      },
+      Has_CFTP_Revenue = any(!is.na(AVG_CFTP) & Daily_Units > 0)
+    ), by = Variable] %>%
+      as_tibble()
+    
+    return(list(
+      revenue_lookup = setNames(revenue_by_var$Revenue, revenue_by_var$Variable),
+      covered_lookup = setNames(revenue_by_var$Has_CFTP_Revenue, revenue_by_var$Variable),
+      missing_months = missing_months
+    ))
+  }
+  
   revenue_by_var <- df_med_input %>%
     mutate(Month = as.Date(floor_date(Date, "month"))) %>%
     select(Date, Month, all_of(contrib_cols)) %>%

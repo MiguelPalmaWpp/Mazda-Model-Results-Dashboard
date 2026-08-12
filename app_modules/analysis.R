@@ -175,9 +175,18 @@ build_excel_report <- function(analysis, cutoff_date, roi_from, roi_to, previous
     NULL
   )
 
-  write_granularity_sheet(wb, "Daily", analysis$metrics_daily, analysis$df)
-  write_granularity_sheet(wb, "Weekly", analysis$metrics_weekly, analysis$df_weekly)
-  write_granularity_sheet(wb, "Monthly", analysis$metrics_monthly, analysis$df_monthly)
+  write_granularity_sheet(
+    wb, "Daily", analysis$metrics_daily, analysis$df,
+    previous_series = if (!is.null(previous_comparison)) previous_comparison$series$Daily else NULL
+  )
+  write_granularity_sheet(
+    wb, "Weekly", analysis$metrics_weekly, analysis$df_weekly,
+    previous_series = if (!is.null(previous_comparison)) previous_comparison$series$Weekly else NULL
+  )
+  write_granularity_sheet(
+    wb, "Monthly", analysis$metrics_monthly, analysis$df_monthly,
+    previous_series = if (!is.null(previous_comparison)) previous_comparison$series$Monthly else NULL
+  )
 
   roi_export_table <- if (isTRUE(analysis$gradient_applied)) {
     analysis$roi_table_gradient

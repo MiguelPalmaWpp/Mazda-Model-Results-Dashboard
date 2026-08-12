@@ -214,7 +214,7 @@ aggregate_data <- function(df, freq, method = "sum") {
   
   df_grouped <- df %>%
     mutate(Period = if (freq == "week") {
-      floor_date(Date, freq, week_start = 1)
+      floor_date(Date, freq, week_start = 7)
     } else {
       floor_date(Date, freq)
     }) %>%
@@ -869,10 +869,32 @@ add_metrics_over_time_sheet <- function(wb, df_mot, df_mot_grad = NULL) {
 }
 
 # ── Daily / Weekly / Monthly sheets ────────────────────────────────────────
-write_granularity_sheet <- function(wb, sheet_name, metrics, df_data) {
+write_granularity_sheet <- function(wb, sheet_name, metrics, df_data, previous_series = NULL) {
   addWorksheet(wb, sheet_name)
   
   has_gradient <- "Pred_Gradient" %in% colnames(df_data)
+  has_previous <- !is.null(previous_series) && nrow(previous_series) > 0 && "Previous_Pred" %in% colnames(previous_series)
+  
+  append_previous_prediction <- function(df_export) {
+    if (!has_previous) {
+      return(df_export)
+    }
+    
+    previous_export <- previous_series %>%
+      transmute(
+        Date = as.Date(Date),
+        `Previous Model Predicted` = round(as.numeric(Previous_Pred), 2)
+      )
+    
+    df_export %>%
+      mutate(Date = as.Date(Date)) %>%
+      left_join(previous_export, by = "Date") %>%
+      mutate(
+        `Previous Model Error` = round(`Previous Model Predicted` - Actual, 2),
+        `Previous Model Abs Error` = round(abs(`Previous Model Predicted` - Actual), 2),
+        `Previous Model Pct Error` = round(ifelse(Actual != 0, `Previous Model Error` / Actual * 100, NA), 2)
+      )
+  }
   
   writeData(wb, sheet_name, paste("Metrics Report -", sheet_name),
             startRow = 1, startCol = 1)
@@ -901,7 +923,7 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data) {
   if (has_gradient) {
     df_export <- df_data %>%
       mutate(
-        Date            = format(Date, "%d/%m/%Y"),
+        Date            = as.Date(Date),
         Actual          = round(Actual,        2),
         Predicted       = round(Pred,          2),
         Pred_Gradient   = round(Pred_Gradient, 2),
@@ -914,10 +936,12 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data) {
       ) %>%
       select(Date, Actual,
              Predicted, Error, Abs_Error, Pct_Error,
-             Pred_Gradient, Error_Gradient, Abs_Error_Grad, Pct_Error_Grad)
+             Pred_Gradient, Error_Gradient, Abs_Error_Grad, Pct_Error_Grad) %>%
+      append_previous_prediction() %>%
+      mutate(Date = format(Date, "%d/%m/%Y"))
     
     n_cols      <- ncol(df_export)
-    col_widths  <- c(14, 14, 14, 12, 12, 12, 16, 16, 16, 16)
+    col_widths  <- c(14, 14, 14, 12, 12, 12, 16, 16, 16, 16, rep(20, max(0, n_cols - 10)))
     
     writeData(wb, sheet_name, df_export, startRow = data_row)
     apply_header_style(wb, sheet_name, data_row, 1:n_cols)
@@ -939,10 +963,19 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data) {
     mergeCells(wb, sheet_name, cols = 3:6,  rows = group_row)
     mergeCells(wb, sheet_name, cols = 7:10, rows = group_row)
     
+    if (has_previous) {
+      writeData(wb, sheet_name, "Previous Model", startRow = group_row, startCol = 11)
+      addStyle(wb, sheet_name,
+               createStyle(fgFill = "#7E57C2", fontColour = "#FFFFFF",
+                           textDecoration = "bold", halign = "center"),
+               rows = group_row, cols = 11:n_cols, gridExpand = TRUE)
+      mergeCells(wb, sheet_name, cols = 11:n_cols, rows = group_row)
+    }
+    
   } else {
     df_export <- df_data %>%
       mutate(
-        Date      = format(Date, "%d/%m/%Y"),
+        Date      = as.Date(Date),
         Actual    = round(Actual, 2),
         Predicted = round(Pred,   2),
         Error     = round(Pred - Actual, 2),
@@ -950,13 +983,31 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data) {
         Pct_Error = round(ifelse(Actual != 0,
                                  (Pred - Actual) / Actual * 100, NA), 2)
       ) %>%
-      select(Date, Actual, Predicted, Error, Abs_Error, Pct_Error)
+      select(Date, Actual, Predicted, Error, Abs_Error, Pct_Error) %>%
+      append_previous_prediction() %>%
+      mutate(Date = format(Date, "%d/%m/%Y"))
     
     n_cols     <- ncol(df_export)
-    col_widths <- rep(16, n_cols)
+    col_widths <- c(rep(16, min(n_cols, 6)), rep(20, max(0, n_cols - 6)))
     
     writeData(wb, sheet_name, df_export, startRow = data_row)
     apply_header_style(wb, sheet_name, data_row, 1:n_cols)
+    
+    if (has_previous) {
+      group_row <- data_row - 1
+      writeData(wb, sheet_name, "Current Model", startRow = group_row, startCol = 3)
+      writeData(wb, sheet_name, "Previous Model", startRow = group_row, startCol = 7)
+      addStyle(wb, sheet_name,
+               createStyle(fgFill = "#2E75B6", fontColour = "#FFFFFF",
+                           textDecoration = "bold", halign = "center"),
+               rows = group_row, cols = 3:6, gridExpand = TRUE)
+      addStyle(wb, sheet_name,
+               createStyle(fgFill = "#7E57C2", fontColour = "#FFFFFF",
+                           textDecoration = "bold", halign = "center"),
+               rows = group_row, cols = 7:n_cols, gridExpand = TRUE)
+      mergeCells(wb, sheet_name, cols = 3:6, rows = group_row)
+      mergeCells(wb, sheet_name, cols = 7:n_cols, rows = group_row)
+    }
   }
   
   stripe_rows(wb, sheet_name, nrow(df_export), data_row, n_cols)

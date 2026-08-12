@@ -133,6 +133,8 @@ build_fit_timeseries_plot <- function(df, title) {
     add_lines(
       y = ~Actual,
       name = "Actual",
+      type = "scatter",
+      mode = "lines",
       line = list(color = "#5B9BD5", width = 2),
       hovertemplate = paste(
         "Date: %{x|%Y-%m-%d}",
@@ -145,6 +147,8 @@ build_fit_timeseries_plot <- function(df, title) {
     add_lines(
       y = ~Pred,
       name = "Predicted",
+      type = "scatter",
+      mode = "lines",
       line = list(color = "#f39c12", width = 2),
       hovertemplate = paste(
         "Date: %{x|%Y-%m-%d}",
@@ -160,6 +164,8 @@ build_fit_timeseries_plot <- function(df, title) {
       add_lines(
         y = ~Pred_Gradient,
         name = "Predicted Gradient",
+        type = "scatter",
+        mode = "lines",
         line = list(color = "#2fb344", width = 2),
         hovertemplate = paste(
           "Date: %{x|%Y-%m-%d}",
@@ -295,6 +301,8 @@ build_fit_scatter_plot <- function(df, title) {
         x = ~Actual,
         y = ~Pred,
         name = "Trend",
+        type = "scatter",
+        mode = "lines",
         line = list(color = "#4a87c0", width = 2),
         hoverinfo = "skip",
         showlegend = FALSE
@@ -377,6 +385,8 @@ build_error_behavior_plot <- function(df, title) {
     add_lines(
       y = rep(mean_residual, nrow(df_error)),
       name = "Mean Residual",
+      type = "scatter",
+      mode = "lines",
       line = list(color = "#f39c12", width = 2, dash = "dash"),
       hoverinfo = "skip"
     ) %>%
@@ -400,6 +410,8 @@ build_error_behavior_plot <- function(df, title) {
       add_lines(
         y = ~Residual_Gradient,
         name = "Gradient Residual",
+        type = "scatter",
+        mode = "lines",
         line = list(color = "#2fb344", width = 2),
         hovertemplate = paste(
           "Date: %{x|%Y-%m-%d}",
