@@ -312,6 +312,37 @@ format_model_row_alignment_note <- function(alignment) {
   )
 }
 
+date_alignment_diagnostics <- function(df_mff, df_pred, kpi_col) {
+  if (is.na(kpi_col) || !kpi_col %in% colnames(df_mff)) {
+    return(list(
+      exact_count = NA_integer_,
+      comparable_count = NA_integer_,
+      mae = NA_real_,
+      correlation = NA_real_
+    ))
+  }
+  
+  joined <- df_pred %>%
+    transmute(Date, observed = suppressWarnings(as.numeric(observed))) %>%
+    inner_join(
+      df_mff %>%
+        transmute(Date, mff_kpi = suppressWarnings(as.numeric(.data[[kpi_col]]))),
+      by = "Date"
+    )
+  
+  comparable <- is.finite(joined$observed) & is.finite(joined$mff_kpi)
+  list(
+    exact_count = sum(comparable & abs(joined$observed - joined$mff_kpi) < 1e-9),
+    comparable_count = sum(comparable),
+    mae = if (any(comparable)) mean(abs(joined$observed[comparable] - joined$mff_kpi[comparable]), na.rm = TRUE) else NA_real_,
+    correlation = if (sum(comparable) >= 2) {
+      suppressWarnings(cor(joined$observed[comparable], joined$mff_kpi[comparable], use = "complete.obs"))
+    } else {
+      NA_real_
+    }
+  )
+}
+
 read_upload_preview <- function(file_row, n_max = 5) {
   path <- materialize_upload(file_row, "Uploaded file")
   ext <- tolower(tools::file_ext(path))
@@ -342,12 +373,12 @@ classify_upload_schema <- function(file_row) {
   has <- function(required) all(tolower(required) %in% cols_lower)
   has_any_prefix <- function(prefix) any(grepl(prefix, cols, ignore.case = TRUE))
 
-  if (has(c("row", "observed", "fitted"))) {
-    return(list(type = "predictions", reason = "contains row, observed, and fitted columns"))
+  if (has(c("row", "observed", "fitted")) || has(c("date", "observed", "fitted"))) {
+    return(list(type = "predictions", reason = "contains observed and fitted columns with row or Date"))
   }
 
-  if (has(c("row", "bias")) && !has(c("observed", "fitted"))) {
-    return(list(type = "new_contributions", reason = "contains row and bias columns"))
+  if ((has(c("row", "bias")) || has(c("date", "bias"))) && !has(c("observed", "fitted"))) {
+    return(list(type = "new_contributions", reason = "contains bias columns with row or Date"))
   }
 
   if (has(c("label", "share_total"))) {
@@ -381,6 +412,116 @@ load_model_data_from_new_outputs <- function(mff_path, predictions_path, contrib
   df_pred <- read_model_csv(predictions_path, "predictions.csv")
   df_contrib_raw <- read_model_csv(contributions_path, "contributions.csv")
 
+  pred_has_date <- "Date" %in% colnames(df_pred) || "date" %in% tolower(colnames(df_pred))
+  contrib_has_date <- "Date" %in% colnames(df_contrib_raw) || "date" %in% tolower(colnames(df_contrib_raw))
+  
+  if (pred_has_date && contrib_has_date) {
+    df_pred <- clean_date_table(df_pred, "predictions.csv")
+    df_contrib_raw <- clean_date_table(df_contrib_raw, "contributions.csv")
+    assert_required_columns(df_pred, c("Date", "observed", "fitted"), "predictions.csv")
+    assert_required_columns(df_contrib_raw, "Date", "contributions.csv")
+    
+    if (anyDuplicated(df_pred$Date) > 0 || anyDuplicated(df_contrib_raw$Date) > 0) {
+      stop("predictions.csv and contributions.csv Date columns must be unique.")
+    }
+    
+    pred_dates <- sort(unique(as.Date(df_pred$Date)))
+    contrib_dates <- sort(unique(as.Date(df_contrib_raw$Date)))
+    if (!identical(pred_dates, contrib_dates)) {
+      stop("predictions.csv and contributions.csv do not contain the same dates.")
+    }
+    
+    if (anyDuplicated(df_mff$Date) > 0) {
+      stop("The uploaded MFF has duplicate Date values, so model outputs with Date cannot be safely joined.")
+    }
+    
+    missing_mff_dates <- setdiff(pred_dates, as.Date(df_mff$Date))
+    if (length(missing_mff_dates) > 0) {
+      stop(
+        "The uploaded MFF is missing dates found in predictions.csv/contributions.csv. Examples: ",
+        paste(head(as.character(missing_mff_dates), 5), collapse = ", ")
+      )
+    }
+    
+    date_diag <- date_alignment_diagnostics(df_mff, df_pred, kpi_col)
+    mff_non_spend_cols <- c("Date", "Actual", "Row", kpi_col[!is.na(kpi_col)])
+    
+    df_actual <- df_pred %>%
+      transmute(Date, Actual = as.numeric(observed)) %>%
+      left_join(
+        df_mff %>% select(Date, everything(), -any_of(c("Actual", "Row", kpi_col[!is.na(kpi_col)]))),
+        by = "Date"
+      ) %>%
+      select(Date, Actual, everything())
+    
+    contrib_cols_raw <- setdiff(colnames(df_contrib_raw), "Date")
+    contrib_names <- make_contribution_names(contrib_cols_raw)
+    contrib_clean <- sub("^Contrib_", "", contrib_names)
+    spend_columns <- setdiff(colnames(df_mff), mff_non_spend_cols)
+    spend_match_count <- sum(
+      contrib_clean %in% spend_columns |
+        gsub("[^a-z0-9]+", "_", tolower(contrib_clean)) %in%
+          gsub("[^a-z0-9]+", "_", tolower(spend_columns))
+    )
+    
+    df_med <- df_contrib_raw %>%
+      select(Date, all_of(contrib_cols_raw)) %>%
+      left_join(df_pred %>% transmute(Date, Pred = as.numeric(fitted)), by = "Date") %>%
+      select(Date, Pred, all_of(contrib_cols_raw))
+    colnames(df_med)[match(contrib_cols_raw, colnames(df_med))] <- contrib_names
+    
+    summary_used <- FALSE
+    df_pct <- NULL
+    if (!is.null(contribution_summary_path) && nzchar(contribution_summary_path)) {
+      df_summary <- read_model_csv(contribution_summary_path, "contribution_summary.csv")
+      assert_required_columns(df_summary, c("label", "share_total"), "contribution_summary.csv")
+      df_pct <- df_summary %>%
+        filter(!is.na(label), !is.na(share_total)) %>%
+        transmute(
+          Variable = make_contribution_names(label),
+          Pct = as.numeric(share_total) * 100
+        )
+      summary_used <- TRUE
+    }
+    
+    df <- df_actual %>%
+      select(Date, Actual) %>%
+      inner_join(df_med %>% select(Date, Pred), by = "Date") %>%
+      arrange(Date)
+    
+    return(list(
+      df = df,
+      df_med = df_med,
+      df_pct = df_pct,
+      df_input = df_actual,
+      diagnostics = list(
+        input_format = "New model outputs with Date",
+        kpi_column = if (is.na(kpi_col)) "observed from predictions.csv" else kpi_col,
+        pred_column = "fitted",
+        row_note = "Model outputs include Date. The app joined predictions, contributions, and MFF by Date.",
+        mff_row_count = nrow(df_mff),
+        prediction_date_range = range(pred_dates, na.rm = TRUE),
+        contribution_date_range = range(contrib_dates, na.rm = TRUE),
+        row_match_count = length(pred_dates),
+        row_offset = NA_integer_,
+        row_alignment_exact_count = date_diag$exact_count,
+        row_alignment_comparable_count = date_diag$comparable_count,
+        row_alignment_mae = date_diag$mae,
+        row_alignment_correlation = date_diag$correlation,
+        contribution_summary_used = summary_used,
+        contribution_summary_message = if (summary_used) {
+          "contribution_summary.csv was used for full-period contribution percentages."
+        } else {
+          "contribution_summary.csv was not uploaded. Full-period percentages will be recalculated from contribution units."
+        },
+        spend_match_count = spend_match_count,
+        spend_columns = setdiff(colnames(df_actual), c("Date", "Actual")),
+        contribution_columns = contrib_names,
+        date_range = range(df$Date, na.rm = TRUE)
+      )
+    ))
+  }
+  
   required_pred <- c("row", "observed", "fitted")
   assert_required_columns(df_pred, required_pred, "predictions.csv")
   assert_required_columns(df_contrib_raw, "row", "contributions.csv")

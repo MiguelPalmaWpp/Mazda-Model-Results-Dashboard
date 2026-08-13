@@ -379,6 +379,16 @@ ui <- fluidPage(
             selected = "sum",
             options = list(dropdownParent = "body")
           ),
+          selectizeInput(
+            "weekly_grouping",
+            "Weekly Grouping",
+            choices = c(
+              "Forward from Sunday (Sun-Sat)" = "forward_from_sunday",
+              "Backward to Sunday (Mon-Sun)" = "backward_to_sunday"
+            ),
+            selected = "forward_from_sunday",
+            options = list(dropdownParent = "body")
+          ),
           class = "sidebar-card-settings"
         ),
         card(

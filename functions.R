@@ -20,11 +20,13 @@ sort_order_map <- c(
   "T1 Paid Media Nameplate"      = 0,  "T1 Paid Media Halo"           = 1,
   "Dealer Direct"                = 2,  "Shift Digital CAP"            = 3,
   "VML CAP"                      = 4,  "Variable Marketing"           = 5,
-  "Retail Inventory"             = 6,  "Brand Consideration"          = 7,
-  "Earned Media - KBB"           = 8,  "Earned Media - Google Trends" = 9,
-  "Owned Media - MUSA"           = 10, "Competitive Spend"            = 11,
-  "Competitive Inventory"        = 12, "Retail Production"            = 13,
-  "Tariffs"                      = 14, "Base"                         = 99
+  "Sinergy"                      = 6,  "Retail Inventory"             = 7,
+  "Brand Consideration"          = 8,
+  "Earned Media - KBB"           = 9,  "Earned Media - Google Trends" = 10,
+  "Earned Media - SOV"           = 11, "Owned Media - MUSA"           = 12,
+  "Competitive Spend"            = 13, "Competitive Inventory"        = 14,
+  "Retail Production"            = 15, "Tariffs"                      = 16,
+  "Base"                         = 99
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -208,13 +210,13 @@ calculate_metrics_over_time <- function(df, pred_col = "Pred") {
 }
 
 # aggregate_data actualizado para propagar Pred_Gradient si existe
-aggregate_data <- function(df, freq, method = "sum") {
+aggregate_data <- function(df, freq, method = "sum", week_start = 7) {
   agg_fn       <- if (method == "sum") sum else mean
   has_gradient <- "Pred_Gradient" %in% colnames(df)
   
   df_grouped <- df %>%
     mutate(Period = if (freq == "week") {
-      floor_date(Date, freq, week_start = 7)
+      floor_date(Date, freq, week_start = week_start)
     } else {
       floor_date(Date, freq)
     }) %>%
@@ -450,6 +452,23 @@ mapping_row_to_list <- function(row) {
 apply_channel_mapping_overrides <- function(mapping, col_name) {
   clean <- normalize_mapping_key(col_name)
   
+  if(grepl("earned_media", clean) && grepl("(^|_)sov($|_)|share_of_voice", clean)) {
+    mapping$channel <- "Earned Media"
+    mapping$category <- "Earned Media - SOV"
+    mapping$sub_category <- "Earned Media - SOV"
+    mapping$funnel <- "Earned Media - SOV"
+    mapping$sp_channel <- "Earned Media - SOV"
+    mapping$sp_agg <- "Average"
+  }
+  
+  if(grepl("vm_?sinergy|vmsinergy|vm_synergy|vmsynergy", clean)) {
+    mapping$channel <- "Sinergy"
+    mapping$category <- "Sinergy"
+    mapping$sub_category <- "Sinergy"
+    mapping$funnel <- "Sinergy"
+    mapping$sp_channel <- "Sinergy"
+  }
+  
   if(grepl("macro_economic_indicators", clean)) {
     mapping$sub_category <- "Macroeconomic"
     if(identical(mapping$funnel, "Base") || is.na(mapping$funnel) || !nzchar(mapping$funnel)) {
@@ -483,6 +502,8 @@ fallback_channel_mapping <- function(col_name) {
     category <- sub_category <- funnel <- "VML CAP"
     channel <- infer_t1_channel_from_name(col_name)
     sp_channel <- paste("VML CAP", channel)
+  } else if(grepl("vm_?sinergy|vmsinergy|vm_synergy|vmsynergy", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Sinergy"
   } else if(grepl("variable_marketing|incentive", clean)) {
     channel <- category <- sub_category <- funnel <- sp_channel <- "Variable Marketing"
   } else if(grepl("competitive.*spend|competitive_spend", clean)) {
@@ -495,6 +516,10 @@ fallback_channel_mapping <- function(col_name) {
     sp_agg <- "Average"
   } else if(grepl("brand_health|brand_consideration|consideration", clean)) {
     channel <- category <- sub_category <- funnel <- sp_channel <- "Brand Consideration"
+    sp_agg <- "Average"
+  } else if(grepl("earned_media", clean) && grepl("(^|_)sov($|_)|share_of_voice", clean)) {
+    channel <- "Earned Media"
+    category <- sub_category <- funnel <- sp_channel <- "Earned Media - SOV"
     sp_agg <- "Average"
   } else if(grepl("google_trends", clean)) {
     channel <- "Earned Media"

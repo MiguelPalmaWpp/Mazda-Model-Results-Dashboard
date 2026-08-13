@@ -510,11 +510,11 @@ read_previous_long_format_sheet <- function(filepath, sheet, nameplate = NULL) {
   )
 }
 
-aggregate_previous_series <- function(df, freq, method = "sum") {
+aggregate_previous_series <- function(df, freq, method = "sum", week_start = 7) {
   if (requireNamespace("data.table", quietly = TRUE)) {
     dt <- data.table::as.data.table(df)
     dt[, Period := if (freq == "week") {
-      lubridate::floor_date(Date, freq, week_start = 7)
+      lubridate::floor_date(Date, freq, week_start = week_start)
     } else {
       lubridate::floor_date(Date, freq)
     }]
@@ -532,7 +532,7 @@ aggregate_previous_series <- function(df, freq, method = "sum") {
   agg_fn <- if (identical(method, "mean")) mean else sum
   df %>%
     mutate(Period = if (freq == "week") {
-      floor_date(Date, freq, week_start = 7)
+      floor_date(Date, freq, week_start = week_start)
     } else {
       floor_date(Date, freq)
     }) %>%
@@ -542,10 +542,10 @@ aggregate_previous_series <- function(df, freq, method = "sum") {
     arrange(Date)
 }
 
-previous_series_from_contributions <- function(daily, aggregation_method = "sum") {
+previous_series_from_contributions <- function(daily, aggregation_method = "sum", week_start = 7) {
   list(
     Daily = daily,
-    Weekly = aggregate_previous_series(daily, "week", aggregation_method),
+    Weekly = aggregate_previous_series(daily, "week", aggregation_method, week_start = week_start),
     Monthly = aggregate_previous_series(daily, "month", aggregation_method)
   )
 }
@@ -601,8 +601,10 @@ load_previous_model_report <- function(filepath, mode = "excel_report",
                                        contribution_sheet = NULL, roi_sheet = NULL,
                                        long_format_sheet = NULL,
                                        long_format_nameplate = NULL,
-                                       aggregation_method = "sum") {
+                                       aggregation_method = "sum",
+                                       weekly_grouping = "forward_from_sunday") {
   mode <- mode %||% "excel_report"
+  week_start <- if (identical(weekly_grouping, "backward_to_sunday")) 1 else 7
   
   if (identical(mode, "long_format")) {
     long_format_sheet <- long_format_sheet %||% previous_long_format_sheet_default(filepath)
@@ -617,7 +619,7 @@ load_previous_model_report <- function(filepath, mode = "excel_report",
       long_format_sheet = long_format_sheet,
       long_format_nameplate = long_format_data$nameplate,
       prediction_source = long_format_data$prediction_source,
-      series = previous_series_from_contributions(long_format_data$daily, aggregation_method),
+      series = previous_series_from_contributions(long_format_data$daily, aggregation_method, week_start = week_start),
       roi = long_format_data$roi,
       contribution_daily = long_format_data$contribution_daily,
       long_format = long_format_data$long_format,
@@ -639,7 +641,7 @@ load_previous_model_report <- function(filepath, mode = "excel_report",
     long_format_sheet = NA_character_,
     long_format_nameplate = NA_character_,
     prediction_source = contribution_data$prediction_source,
-    series = previous_series_from_contributions(contribution_data$daily, aggregation_method),
+    series = previous_series_from_contributions(contribution_data$daily, aggregation_method, week_start = week_start),
     roi = read_previous_roi(filepath, roi_sheet),
     contribution_daily = contribution_data$contribution_daily,
     contribution = contribution_data$contribution
@@ -1104,9 +1106,9 @@ build_comparison_fit_plot <- function(comparison, granularity) {
   }
   
   plot_ly(df, x = ~Date) %>%
-    add_lines(y = ~Actual, name = "Actual", type = "scatter", mode = "lines", line = list(color = "#5B9BD5", width = 2)) %>%
-    add_lines(y = ~Current_Pred, name = "Current Predicted", type = "scatter", mode = "lines", line = list(color = "#f39c12", width = 2)) %>%
-    add_lines(y = ~Previous_Pred, name = "Previous Predicted", type = "scatter", mode = "lines", line = list(color = "#7E57C2", width = 2, dash = "dash")) %>%
+    add_trace(y = ~Actual, name = "Actual", type = "scatter", mode = "lines", line = list(color = "#5B9BD5", width = 2)) %>%
+    add_trace(y = ~Current_Pred, name = "Current Predicted", type = "scatter", mode = "lines", line = list(color = "#f39c12", width = 2)) %>%
+    add_trace(y = ~Previous_Pred, name = "Previous Predicted", type = "scatter", mode = "lines", line = list(color = "#7E57C2", width = 2, dash = "dash")) %>%
     layout(xaxis = list(title = "Date"), yaxis = list(title = "Value")) %>%
     plotly_model_layout(top_margin = 42)
 }
@@ -1118,8 +1120,8 @@ build_comparison_error_plot <- function(comparison, granularity) {
   }
   
   plot_ly(df, x = ~Date) %>%
-    add_lines(y = ~Current_Residual, name = "Current Residual", type = "scatter", mode = "lines", line = list(color = "#5B9BD5", width = 2)) %>%
-    add_lines(y = ~Previous_Residual, name = "Previous Residual", type = "scatter", mode = "lines", line = list(color = "#7E57C2", width = 2, dash = "dash")) %>%
+    add_trace(y = ~Current_Residual, name = "Current Residual", type = "scatter", mode = "lines", line = list(color = "#5B9BD5", width = 2)) %>%
+    add_trace(y = ~Previous_Residual, name = "Previous Residual", type = "scatter", mode = "lines", line = list(color = "#7E57C2", width = 2, dash = "dash")) %>%
     layout(
       xaxis = list(title = "Date"),
       yaxis = list(title = "Actual - Predicted"),

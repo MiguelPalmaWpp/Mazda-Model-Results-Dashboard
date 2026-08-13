@@ -6,7 +6,7 @@ calculate_granularity_metrics <- function(df_daily, df_weekly, df_monthly, pred_
   )
 }
 
-build_analysis <- function(data_loaded, cutoff_date, aggregation_method,
+build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_grouping,
                             roi_from, roi_to, compare_new_period,
                             use_gradient, gradient_path, gradient_sheet,
                             cftp_path, cftp_sheet, cftp_nameplate) {
@@ -35,7 +35,14 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method,
     gradient_message <- paste("Gradient adjustment applied using sheet:", gradient_sheet)
   }
 
-  df_weekly <- aggregate_data(df, "week", aggregation_method)
+  week_start <- if (identical(weekly_grouping, "backward_to_sunday")) 1 else 7
+  weekly_grouping_label <- if (identical(weekly_grouping, "backward_to_sunday")) {
+    "Backward to Sunday (Monday-Sunday)"
+  } else {
+    "Forward from Sunday (Sunday-Saturday)"
+  }
+  
+  df_weekly <- aggregate_data(df, "week", aggregation_method, week_start = week_start)
   df_monthly <- aggregate_data(df, "month", aggregation_method)
 
   metrics_by_granularity <- calculate_granularity_metrics(df, df_weekly, df_monthly)
@@ -130,6 +137,9 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method,
     cftp_nameplate = cftp_nameplate,
     cftp_message = cftp_message,
     cftp_missing_months = cftp_missing_months,
+    weekly_grouping = weekly_grouping,
+    weekly_grouping_label = weekly_grouping_label,
+    week_start = week_start,
     df_weekly = df_weekly,
     df_monthly = df_monthly,
     metrics_daily = metrics_daily,

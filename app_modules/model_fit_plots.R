@@ -130,7 +130,7 @@ build_fit_timeseries_plot <- function(df, title) {
   }
 
   p <- plot_ly(df_plot, x = ~Date) %>%
-    add_lines(
+    add_trace(
       y = ~Actual,
       name = "Actual",
       type = "scatter",
@@ -144,7 +144,7 @@ build_fit_timeseries_plot <- function(df, title) {
       ),
       customdata = ~Actual_Label
     ) %>%
-    add_lines(
+    add_trace(
       y = ~Pred,
       name = "Predicted",
       type = "scatter",
@@ -161,7 +161,7 @@ build_fit_timeseries_plot <- function(df, title) {
 
   if (has_gradient) {
     p <- p %>%
-      add_lines(
+      add_trace(
         y = ~Pred_Gradient,
         name = "Predicted Gradient",
         type = "scatter",
@@ -252,16 +252,17 @@ build_fit_scatter_plot <- function(df, title) {
     )
   }
 
-  p <- plot_ly(
-    x = c(min_val, max_val),
-    y = c(min_val, max_val),
-    type = "scatter",
-    mode = "lines",
-    name = "Perfect Fit",
-    line = list(color = "#94a3b8", width = 1.5, dash = "dash"),
-    hoverinfo = "skip",
-    showlegend = FALSE
-  ) %>%
+  p <- plot_ly() %>%
+    add_trace(
+      x = c(min_val, max_val),
+      y = c(min_val, max_val),
+      type = "scatter",
+      mode = "lines",
+      name = "Perfect Fit",
+      line = list(color = "#94a3b8", width = 1.5, dash = "dash"),
+      hoverinfo = "skip",
+      showlegend = FALSE
+    ) %>%
     add_markers(
       data = df_plot,
       x = ~Actual,
@@ -296,7 +297,7 @@ build_fit_scatter_plot <- function(df, title) {
 
   if (nrow(trend_df) > 0) {
     p <- p %>%
-      add_lines(
+      add_trace(
         data = trend_df,
         x = ~Actual,
         y = ~Pred,
@@ -382,7 +383,7 @@ build_error_behavior_plot <- function(df, title) {
         "<extra></extra>"
       )
     ) %>%
-    add_lines(
+    add_trace(
       y = rep(mean_residual, nrow(df_error)),
       name = "Mean Residual",
       type = "scatter",
@@ -407,7 +408,7 @@ build_error_behavior_plot <- function(df, title) {
   
   if (has_gradient) {
     p_time <- p_time %>%
-      add_lines(
+      add_trace(
         y = ~Residual_Gradient,
         name = "Gradient Residual",
         type = "scatter",

@@ -146,7 +146,7 @@ server <- function(input, output, session) {
   previous_model_cache <- reactiveVal(list(key = NULL, value = NULL))
   previous_model_cache_status <- reactiveVal("No previous model cached.")
   
-  previous_model_cache_key <- function(path, mode, sheet, roi_sheet, nameplate, aggregation_method) {
+  previous_model_cache_key <- function(path, mode, sheet, roi_sheet, nameplate, aggregation_method, weekly_grouping) {
     info <- file.info(path)
     paste(
       normalizePath(path, winslash = "/", mustWork = TRUE),
@@ -157,6 +157,7 @@ server <- function(input, output, session) {
       roi_sheet %||% "",
       nameplate %||% "",
       aggregation_method %||% "",
+      weekly_grouping %||% "",
       sep = "|"
     )
   }
@@ -282,7 +283,8 @@ server <- function(input, output, session) {
         previous_sheet,
         previous_roi,
         long_format_nameplate,
-        input$aggregation_method %||% "sum"
+        input$aggregation_method %||% "sum",
+        input$weekly_grouping %||% "forward_from_sunday"
       )
       cached <- previous_model_cache()
       if (identical(cached$key, cache_key) && !is.null(cached$value)) {
@@ -302,7 +304,8 @@ server <- function(input, output, session) {
           mode = "long_format",
           long_format_sheet = previous_sheet,
           long_format_nameplate = long_format_nameplate,
-          aggregation_method = input$aggregation_method %||% "sum"
+          aggregation_method = input$aggregation_method %||% "sum",
+          weekly_grouping = input$weekly_grouping %||% "forward_from_sunday"
         )
       } else {
         load_previous_model_report(
@@ -310,7 +313,8 @@ server <- function(input, output, session) {
           mode = "excel_report",
           contribution_sheet = previous_sheet,
           roi_sheet = previous_roi,
-          aggregation_method = input$aggregation_method %||% "sum"
+          aggregation_method = input$aggregation_method %||% "sum",
+          weekly_grouping = input$weekly_grouping %||% "forward_from_sunday"
         )
       }
       previous_model_cache(list(key = cache_key, value = value))
@@ -471,6 +475,7 @@ server <- function(input, output, session) {
         data_loaded = loaded,
         cutoff_date = input$cutoff_date,
         aggregation_method = input$aggregation_method,
+        weekly_grouping = input$weekly_grouping %||% "forward_from_sunday",
         roi_from = if (isTRUE(input$compare_new_period)) input$roi_range[1] else NULL,
         roi_to = if (isTRUE(input$compare_new_period)) input$roi_range[2] else NULL,
         compare_new_period = input$compare_new_period,
@@ -527,6 +532,7 @@ server <- function(input, output, session) {
         class = "overview-status-row",
         status("ROI Period", result$roi_period_label),
         status("CFTP", result$cftp_message),
+        status("Weekly Grouping", result$weekly_grouping_label),
         status("New Period Comparison", if (isTRUE(result$compare_new_period)) "Enabled" else "Disabled"),
         status("Gradient Status", result$gradient_message)
       )
@@ -744,6 +750,27 @@ server <- function(input, output, session) {
     loaded <- data_loaded()
     result <- analysis()
     diag <- loaded$diagnostics
+    model_alignment_lines <- if (!is.null(diag$prediction_date_range)) {
+      c(
+        "Date Alignment",
+        diag$row_note,
+        paste("Model date range:", paste(as.character(diag$prediction_date_range), collapse = " to ")),
+        paste("Contribution date range:", paste(as.character(diag$contribution_date_range), collapse = " to ")),
+        paste("Date alignment MAE:", if (!is.null(diag$row_alignment_mae)) round(diag$row_alignment_mae, 6) else "NA"),
+        paste("Date alignment correlation:", if (!is.null(diag$row_alignment_correlation)) round(diag$row_alignment_correlation, 6) else "NA")
+      )
+    } else if (!is.null(diag$row_note)) {
+      c(
+        "Row Alignment",
+        diag$row_note,
+        paste("Model row range:", paste(diag$prediction_row_range, collapse = " to ")),
+        paste("Matched MFF row range:", paste(diag$matched_mff_row_range %||% diag$prediction_row_range, collapse = " to ")),
+        paste("Row alignment MAE:", if (!is.null(diag$row_alignment_mae)) round(diag$row_alignment_mae, 6) else "NA"),
+        paste("Row alignment correlation:", if (!is.null(diag$row_alignment_correlation)) round(diag$row_alignment_correlation, 6) else "NA")
+      )
+    } else {
+      NULL
+    }
 
     paste(
       c(
@@ -755,15 +782,7 @@ server <- function(input, output, session) {
         paste("Prediction column:", diag$pred_column),
         paste("Spend columns:", length(diag$spend_columns)),
         paste("Contribution columns:", length(diag$contribution_columns)),
-        if (!is.null(diag$row_note)) c(
-          "",
-          "Row Alignment",
-          diag$row_note,
-          paste("Model row range:", paste(diag$prediction_row_range, collapse = " to ")),
-          paste("Matched MFF row range:", paste(diag$matched_mff_row_range %||% diag$prediction_row_range, collapse = " to ")),
-          paste("Row alignment MAE:", if (!is.null(diag$row_alignment_mae)) round(diag$row_alignment_mae, 6) else "NA"),
-          paste("Row alignment correlation:", if (!is.null(diag$row_alignment_correlation)) round(diag$row_alignment_correlation, 6) else "NA")
-        ) else NULL,
+        if (!is.null(model_alignment_lines)) c("", model_alignment_lines) else NULL,
         "",
         "Date Range",
         paste(as.character(diag$date_range[1]), "to", as.character(diag$date_range[2])),

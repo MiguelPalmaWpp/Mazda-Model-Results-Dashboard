@@ -124,7 +124,10 @@ Shows:
 -   Time series chart for actual vs predicted values.
 -   Scatter plot for actual vs predicted values.
 -   Error behavior chart with residuals over time and residual distribution.
--   Granularity options: Daily, Weekly, Monthly. Weekly periods start on Sunday.
+-   Granularity options: Daily, Weekly, Monthly.
+-   Weekly grouping options:
+    -   `Forward from Sunday`: weeks run Sunday through Saturday and are labeled by the starting Sunday.
+    -   `Backward to Sunday`: weeks run Monday through Sunday and are labeled by the starting Monday.
 
 ### ROI
 
