@@ -137,7 +137,7 @@ build_fit_timeseries_plot <- function(df, title) {
       mode = "lines",
       line = list(color = "#5B9BD5", width = 2),
       hovertemplate = paste(
-        "Date: %{x|%Y-%m-%d}",
+        "Date: %{x|%m/%d/%Y}",
         "<br>Series: Actual",
         "<br>Value: %{customdata:.3f}",
         "<extra></extra>"
@@ -151,7 +151,7 @@ build_fit_timeseries_plot <- function(df, title) {
       mode = "lines",
       line = list(color = "#f39c12", width = 2),
       hovertemplate = paste(
-        "Date: %{x|%Y-%m-%d}",
+        "Date: %{x|%m/%d/%Y}",
         "<br>Series: Predicted",
         "<br>Value: %{customdata:.3f}",
         "<extra></extra>"
@@ -168,7 +168,7 @@ build_fit_timeseries_plot <- function(df, title) {
         mode = "lines",
         line = list(color = "#2fb344", width = 2),
         hovertemplate = paste(
-          "Date: %{x|%Y-%m-%d}",
+          "Date: %{x|%m/%d/%Y}",
           "<br>Series: Predicted Gradient",
           "<br>Value: %{customdata:.3f}",
           "<extra></extra>"
@@ -377,7 +377,7 @@ build_error_behavior_plot <- function(df, title) {
       marker = list(color = bar_colors),
       customdata = ~paste(Residual_Label, Error_Direction, sep = "|"),
       hovertemplate = paste(
-        "Date: %{x|%Y-%m-%d}",
+        "Date: %{x|%m/%d/%Y}",
         "<br>Residual: %{y:.3f}",
         "<br>%{customdata}",
         "<extra></extra>"
@@ -415,7 +415,7 @@ build_error_behavior_plot <- function(df, title) {
         mode = "lines",
         line = list(color = "#2fb344", width = 2),
         hovertemplate = paste(
-          "Date: %{x|%Y-%m-%d}",
+          "Date: %{x|%m/%d/%Y}",
           "<br>Gradient residual: %{y:.3f}",
           "<extra></extra>"
         )

@@ -521,7 +521,7 @@ server <- function(input, output, session) {
         class = "overview-grid",
         tile(
           "Date Range",
-          paste(as.character(min(result$df$Date)), "to", as.character(max(result$df$Date))),
+          paste(format_app_date(min(result$df$Date)), "to", format_app_date(max(result$df$Date))),
           paste(format(nrow(result$df), big.mark = ","), "matched model rows")
         ),
         tile("MFF Rows", format(nrow(loaded$df_input), big.mark = ","), "Source input records"),
@@ -754,8 +754,8 @@ server <- function(input, output, session) {
       c(
         "Date Alignment",
         diag$row_note,
-        paste("Model date range:", paste(as.character(diag$prediction_date_range), collapse = " to ")),
-        paste("Contribution date range:", paste(as.character(diag$contribution_date_range), collapse = " to ")),
+        paste("Model date range:", paste(format_app_date(diag$prediction_date_range), collapse = " to ")),
+        paste("Contribution date range:", paste(format_app_date(diag$contribution_date_range), collapse = " to ")),
         paste("Date alignment MAE:", if (!is.null(diag$row_alignment_mae)) round(diag$row_alignment_mae, 6) else "NA"),
         paste("Date alignment correlation:", if (!is.null(diag$row_alignment_correlation)) round(diag$row_alignment_correlation, 6) else "NA")
       )
@@ -785,7 +785,7 @@ server <- function(input, output, session) {
         if (!is.null(model_alignment_lines)) c("", model_alignment_lines) else NULL,
         "",
         "Date Range",
-        paste(as.character(diag$date_range[1]), "to", as.character(diag$date_range[2])),
+        paste(format_app_date(diag$date_range[1]), "to", format_app_date(diag$date_range[2])),
         "",
         "CFTP",
         result$cftp_message,

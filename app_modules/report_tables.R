@@ -2,7 +2,7 @@ empty_period_value <- function(x) {
   if (length(x) == 0 || all(is.na(x)) || !all(is.finite(as.numeric(x)))) {
     NA_character_
   } else {
-    as.character(x)
+    format_app_date(x)
   }
 }
 
@@ -10,8 +10,8 @@ build_correlation_table <- function(df, cutoff_date) {
   if (is.null(cutoff_date) || is.na(cutoff_date)) {
     return(data.frame(
       Period = "Full Period",
-      Date_From = as.character(min(df$Date, na.rm = TRUE)),
-      Date_To = as.character(max(df$Date, na.rm = TRUE)),
+      Date_From = format_app_date(min(df$Date, na.rm = TRUE)),
+      Date_To = format_app_date(max(df$Date, na.rm = TRUE)),
       N_Rows = nrow(df),
       Correlation = round(calc_pearson(df$Actual, df$Pred), 3)
     ))
@@ -52,7 +52,7 @@ build_historical_contributions_table <- function(df_med) {
   df_med %>%
     select(all_of(select_cols)) %>%
     arrange(Date) %>%
-    mutate(Date = format(Date, "%Y-%m-%d")) %>%
+    mutate(Date = format_app_date(Date)) %>%
     setNames(sub("^Contrib_", "", colnames(.)))
 }
 
@@ -159,8 +159,9 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
       CFTP = as.numeric(CFTP),
       contribution_gradient = coalesce(contribution_gradient, contribution)
     ) %>%
-    select(Date, variable, contribution, spend, CFTP, contribution_gradient) %>%
     arrange(Date, variable) %>%
+    mutate(Date = format_app_date(Date)) %>%
+    select(Date, variable, contribution, spend, CFTP, contribution_gradient) %>%
     round_numeric_columns(3)
 }
 

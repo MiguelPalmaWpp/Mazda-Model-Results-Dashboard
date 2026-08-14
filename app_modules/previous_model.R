@@ -824,7 +824,7 @@ comparison_common_period_message <- function(common_dates) {
     return("Common period: No overlapping daily dates.")
   }
   paste0(
-    "Common period: ", as.character(min(common_dates)), " to ", as.character(max(common_dates)),
+    "Common period: ", format_app_date(min(common_dates)), " to ", format_app_date(max(common_dates)),
     " | ", length(common_dates), " common days"
   )
 }

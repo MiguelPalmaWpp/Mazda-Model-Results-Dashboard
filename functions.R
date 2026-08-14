@@ -16,6 +16,13 @@ library(gridExtra)
 # 9-Category 10-Sub-Category 11-Funnel 12-Channel
 ROI_COL_WIDTHS <- c(60, 12, 16, 18, 20, 14, 14, 10, 25, 25, 10, 20)
 
+format_app_date <- function(x) {
+  if (length(x) == 0 || all(is.na(x))) {
+    return(NA_character_)
+  }
+  format(as.Date(x), "%m/%d/%Y")
+}
+
 sort_order_map <- c(
   "T1 Paid Media Nameplate"      = 0,  "T1 Paid Media Halo"           = 1,
   "Dealer Direct"                = 2,  "Shift Digital CAP"            = 3,
@@ -25,7 +32,8 @@ sort_order_map <- c(
   "Earned Media - KBB"           = 9,  "Earned Media - Google Trends" = 10,
   "Earned Media - SOV"           = 11, "Owned Media - MUSA"           = 12,
   "Competitive Spend"            = 13, "Competitive Inventory"        = 14,
-  "Retail Production"            = 15, "Tariffs"                      = 16,
+  "Retail Production"            = 15, "Product"                      = 16,
+  "Tariffs"                      = 17,
   "Base"                         = 99
 )
 
@@ -257,8 +265,8 @@ calculate_correlation_split <- function(df, cutoff_date, output_file) {
   
   result <- data.frame(
     Period      = c("Before", "After"),
-    Date_From   = c(as.character(min(before$Date)), as.character(min(after$Date))),
-    Date_To     = c(as.character(max(before$Date)), as.character(max(after$Date))),
+    Date_From   = c(format_app_date(min(before$Date)), format_app_date(min(after$Date))),
+    Date_To     = c(format_app_date(max(before$Date)), format_app_date(max(after$Date))),
     N_Rows      = c(nrow(before), nrow(after)),
     Correlation = c(round(cor_before, 3), round(cor_after, 3))
   )
@@ -452,6 +460,24 @@ mapping_row_to_list <- function(row) {
 apply_channel_mapping_overrides <- function(mapping, col_name) {
   clean <- normalize_mapping_key(col_name)
   
+  if(clean == "bias") {
+    mapping$channel <- "Intercept"
+    mapping$category <- "Base"
+    mapping$sub_category <- "Intercept"
+    mapping$funnel <- "Intercept"
+    mapping$sp_channel <- "Intercept"
+    mapping$sp_mapping <- "NonMedia"
+  }
+  
+  if(grepl("product", clean) && grepl("inventory|invetory|days_of_supply", clean)) {
+    mapping$channel <- "Product"
+    mapping$category <- "Product"
+    mapping$sub_category <- "Product"
+    mapping$funnel <- "Product"
+    mapping$sp_channel <- "Product"
+    mapping$sp_agg <- "Average"
+  }
+  
   if(grepl("earned_media", clean) && grepl("(^|_)sov($|_)|share_of_voice", clean)) {
     mapping$channel <- "Earned Media"
     mapping$category <- "Earned Media - SOV"
@@ -485,7 +511,14 @@ fallback_channel_mapping <- function(col_name) {
   sp_mapping <- "NonMedia"
   sp_agg <- "Sum"
   
-  if(grepl("paid_media_tier_1|tier_1", clean)) {
+  if(clean == "bias") {
+    channel <- funnel <- sp_channel <- "Intercept"
+    category <- "Base"
+    sub_category <- "Intercept"
+  } else if(grepl("product", clean) && grepl("inventory|invetory|days_of_supply", clean)) {
+    channel <- category <- sub_category <- funnel <- sp_channel <- "Product"
+    sp_agg <- "Average"
+  } else if(grepl("paid_media_tier_1|tier_1", clean)) {
     channel <- infer_t1_channel_from_name(col_name)
     category <- "T1 Paid Media"
     sub_category <- if(grepl("halo", clean)) "T1 Paid Media Halo" else "T1 Paid Media Nameplate"
@@ -963,7 +996,7 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data, previous_s
              Predicted, Error, Abs_Error, Pct_Error,
              Pred_Gradient, Error_Gradient, Abs_Error_Grad, Pct_Error_Grad) %>%
       append_previous_prediction() %>%
-      mutate(Date = format(Date, "%d/%m/%Y"))
+      mutate(Date = format_app_date(Date))
     
     n_cols      <- ncol(df_export)
     col_widths  <- c(14, 14, 14, 12, 12, 12, 16, 16, 16, 16, rep(20, max(0, n_cols - 10)))
@@ -1010,7 +1043,7 @@ write_granularity_sheet <- function(wb, sheet_name, metrics, df_data, previous_s
       ) %>%
       select(Date, Actual, Predicted, Error, Abs_Error, Pct_Error) %>%
       append_previous_prediction() %>%
-      mutate(Date = format(Date, "%d/%m/%Y"))
+      mutate(Date = format_app_date(Date))
     
     n_cols     <- ncol(df_export)
     col_widths <- c(rep(16, min(n_cols, 6)), rep(20, max(0, n_cols - 6)))
@@ -1299,7 +1332,7 @@ add_historical_contrib_sheet <- function(wb, df_med) {
     select(all_of(select_cols)) %>%
     arrange(Date) %>%
     mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
-    mutate(Date = format(Date, "%d/%m/%Y"))
+    mutate(Date = format_app_date(Date))
   
   # Remove Contrib_ prefix for cleaner column headers
   colnames(df_hist) <- sub("^Contrib_", "", colnames(df_hist))
@@ -1387,11 +1420,11 @@ add_pre_vs_post_sheet <- function(wb, df_med, cutoff_date) {
     mutate(across(where(is.numeric), ~ round(.x, 3)))
   
   # ── Write to Excel ─────────────────────────────────────────────────────────
-  pre_label  <- paste0("Pre  [ ", as.character(min(df_pre$Date)),
-                       " → ", as.character(max(df_pre$Date)),  " ]")
-  post_label <- paste0("Post [ ", as.character(min(df_post$Date)),
-                       " → ", as.character(max(df_post$Date)), " ]")
-  title_text <- paste("Pre vs Post Contribution  |  Cutoff:", as.character(cutoff_date),
+  pre_label  <- paste0("Pre  [ ", format_app_date(min(df_pre$Date)),
+                       " -> ", format_app_date(max(df_pre$Date)),  " ]")
+  post_label <- paste0("Post [ ", format_app_date(min(df_post$Date)),
+                       " -> ", format_app_date(max(df_post$Date)), " ]")
+  title_text <- paste("Pre vs Post Contribution  |  Cutoff:", format_app_date(cutoff_date),
                       " |  ", pre_label, "  |  ", post_label)
   
   addWorksheet(wb, "Pre vs Post")
