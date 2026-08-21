@@ -204,9 +204,9 @@ When a previous report is uploaded, the existing `Daily`, `Weekly`, and `Monthly
 
 The export reuses the already calculated ROI tables from **Run Analysis** to reduce download time.
 
-### Download Long Format CSV
+### Download Long Format XLSX
 
-Exports the precomputed long-format contribution table for downstream analysis. This includes contribution, spend, monthly CFTP, and gradient-adjusted contribution fields when available.
+Exports the precomputed long-format contribution table as an Excel workbook. The output columns are `Date`, `Variable`, `Contribution`, `Spend`, and `CFTP`.
 
 ## 10. Troubleshooting
 

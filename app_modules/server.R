@@ -484,7 +484,8 @@ server <- function(input, output, session) {
         gradient_sheet = gradient_sheet,
         cftp_path = cftp_path,
         cftp_sheet = cftp_sheet,
-        cftp_nameplate = input$cftp_nameplate
+        cftp_nameplate = input$cftp_nameplate,
+        mapping_model = input$mapping_model %||% "auto"
       )
 
       showNotification("Analysis completed successfully.", type = "message", duration = 6)
@@ -532,6 +533,7 @@ server <- function(input, output, session) {
         class = "overview-status-row",
         status("ROI Period", result$roi_period_label),
         status("CFTP", result$cftp_message),
+        status("Mapping Model", result$mapping_model_type),
         status("Weekly Grouping", result$weekly_grouping_label),
         status("New Period Comparison", if (isTRUE(result$compare_new_period)) "Enabled" else "Disabled"),
         status("Gradient Status", result$gradient_message)
@@ -661,6 +663,24 @@ server <- function(input, output, session) {
     validate(need(!is.null(comparison), "Upload a previous model report to compare."))
     dt_table(comparison$variable, page_length = 25)
   }, server = FALSE)
+
+  output$general_category_comparison_table <- renderDT({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    dt_table(comparison$general_category, page_length = 15)
+  }, server = FALSE)
+  
+  output$general_subcategory_comparison_table <- renderDT({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    dt_table(comparison$general_subcategory, page_length = 20)
+  }, server = FALSE)
+  
+  output$general_halo_comparison_table <- renderDT({
+    comparison <- previous_model_comparison()
+    validate(need(!is.null(comparison), "Upload a previous model report to compare."))
+    dt_table(comparison$general_halo, page_length = 20)
+  }, server = FALSE)
   
   output$previous_fit_plot <- renderPlotly({
     comparison <- previous_model_comparison()
@@ -787,6 +807,13 @@ server <- function(input, output, session) {
         "Date Range",
         paste(format_app_date(diag$date_range[1]), "to", format_app_date(diag$date_range[2])),
         "",
+        "Mapping",
+        paste("Mapping file:", analysis()$mapping_file %||% "Not found"),
+        paste("Mapping sheet:", analysis()$mapping_sheet %||% "Not found"),
+        paste("Mapping model:", analysis()$mapping_model_type),
+        paste("Mapping source:", analysis()$mapping_model_source),
+        if (!is.na(analysis()$mapping_model_warning %||% NA_character_)) paste("Mapping warning:", analysis()$mapping_model_warning) else NULL,
+        "",
         "CFTP",
         result$cftp_message,
         paste("CFTP months:", paste(format(sort(unique(result$cftp_data$Month)), "%Y-%m"), collapse = ", ")),
@@ -820,10 +847,15 @@ server <- function(input, output, session) {
   
   output$download_long_format <- downloadHandler(
     filename = function() {
-      download_filename("long_format_contributions", "csv")
+      download_filename("long_format_contributions", "xlsx")
     },
+    contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     content = function(file) {
-      readr::write_csv(analysis()$long_format_table, file)
+      wb <- createWorkbook()
+      addWorksheet(wb, "Long Format")
+      writeDataTable(wb, "Long Format", analysis()$long_format_table, tableStyle = "TableStyleLight9")
+      setColWidths(wb, "Long Format", cols = seq_along(analysis()$long_format_table), widths = "auto")
+      saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
 

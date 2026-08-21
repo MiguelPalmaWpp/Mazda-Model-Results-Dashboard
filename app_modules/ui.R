@@ -3,10 +3,35 @@ ui <- fluidPage(
     tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
     tags$script(src = "custom.js"),
     tags$style(HTML("
-      .mazda-app-shell { padding: 22px 28px 32px; }
-      .mazda-sidebar { display: grid; gap: 16px; }
-      .mazda-content { min-width: 0; }
-      .mazda-layout { display: grid; gap: 20px; grid-template-columns: 360px minmax(0, 1fr); align-items: start; }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { max-width: 100%; overflow-x: hidden; }
+      .mazda-app-shell {
+        padding: 22px 28px 32px;
+        width: 100%;
+        max-width: 100vw;
+        min-width: 0;
+      }
+      .mazda-sidebar {
+        display: grid;
+        gap: 16px;
+        min-width: 0;
+      }
+      .mazda-content {
+        min-width: 0;
+        width: 100%;
+      }
+      .mazda-layout {
+        align-items: start;
+        display: grid;
+        gap: 20px;
+        grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+        min-width: 0;
+        width: 100%;
+      }
+      .mazda-layout .card {
+        min-width: 0;
+        max-width: 100%;
+      }
       .mazda-sidebar .card { margin-bottom: 0; overflow: visible; }
       .mazda-sidebar .card-header { padding: 10px 14px 8px; font-size: 13px; }
       .mazda-sidebar .card-body { padding: 12px 14px; }
@@ -75,12 +100,21 @@ ui <- fluidPage(
       .sidebar-file-status .qa-summary { margin-bottom: 0; padding: 7px 9px; border-radius: 6px; }
       .sidebar-file-status .qa-summary-text { font-size: 10.5px; line-height: 1.15; }
       .sidebar-file-status .qa-summary-icon { font-size: 11px; }
-      .mazda-main-tabs .tab-content { padding-top: 18px; }
+      .mazda-main-tabs {
+        min-width: 0;
+        width: 100%;
+      }
+      .mazda-main-tabs .tab-content {
+        padding-top: 18px;
+        min-width: 0;
+        width: 100%;
+      }
       .mazda-main-tabs .nav-tabs {
         border-bottom: 2px solid #dee2e6;
         display: flex;
         flex-wrap: wrap;
         gap: 4px 6px;
+        max-width: 100%;
         overflow: visible;
       }
       .mazda-main-tabs .nav-tabs > li { float: none; max-width: 100%; }
@@ -89,7 +123,7 @@ ui <- fluidPage(
         font-size: 13.5px;
         font-weight: 500;
         border-radius: 0 !important;
-        max-width: 220px;
+        max-width: min(220px, calc(100vw - 48px));
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -123,11 +157,17 @@ ui <- fluidPage(
         text-transform: uppercase;
       }
       .model-fit-card .card-body { padding-top: 18px; }
-      .model-fit-card .js-plotly-plot { width: 100% !important; }
+      .model-fit-card,
+      .model-fit-card .card-body,
+      .model-fit-card .js-plotly-plot {
+        min-width: 0;
+        width: 100% !important;
+      }
       .model-fit-grid {
         display: grid;
         gap: 16px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-width: 0;
       }
       .comparison-empty {
         background: #f8fbff;
@@ -138,7 +178,11 @@ ui <- fluidPage(
         font-size: 13px;
         padding: 14px 16px;
       }
-      .dataTables_wrapper { font-size: 12px; }
+      .dataTables_wrapper {
+        font-size: 12px;
+        max-width: 100%;
+        overflow-x: auto;
+      }
       .dt-toolbar {
         align-items: center;
         display: flex;
@@ -155,7 +199,7 @@ ui <- fluidPage(
         font-size: 12px;
         min-height: 32px;
         padding: 6px 10px !important;
-        width: 220px !important;
+        width: min(220px, calc(100vw - 72px)) !important;
       }
       table.mazda-dt {
         border-collapse: separate !important;
@@ -226,6 +270,7 @@ ui <- fluidPage(
         display: grid;
         gap: 12px;
         grid-template-columns: repeat(4, minmax(0, 1fr));
+        min-width: 0;
       }
       .overview-tile {
         background: #ffffff;
@@ -262,6 +307,7 @@ ui <- fluidPage(
         gap: 10px;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         margin-top: 12px;
+        min-width: 0;
       }
       .overview-status {
         background: #f8fbff;
@@ -308,12 +354,40 @@ ui <- fluidPage(
       }
       @media (max-width: 1100px) {
         .mazda-layout { grid-template-columns: 1fr; }
+        .mazda-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .sidebar-card-inputs,
+        .sidebar-card-settings,
+        .sidebar-card-export { grid-column: span 2; }
+        .sidebar-card-inputs .card-body,
+        .sidebar-card-gradient .card-body,
+        .sidebar-card-previous .card-body { max-height: none; }
         .model-fit-grid { grid-template-columns: 1fr; }
         .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .overview-status-row { grid-template-columns: 1fr; }
         .roi-method-panel { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
+        .mazda-app-shell { padding: 14px 12px 22px; }
+        .mazda-sidebar { grid-template-columns: 1fr; }
+        .sidebar-card-inputs,
+        .sidebar-card-settings,
+        .sidebar-card-export { grid-column: auto; }
+        .mazda-main-tabs .nav-tabs { gap: 2px 4px; }
+        .mazda-main-tabs .nav-tabs > li { flex: 1 1 auto; min-width: 0; }
+        .mazda-main-tabs .nav-tabs > li > a {
+          max-width: none;
+          padding-left: 8px;
+          padding-right: 8px;
+          text-align: center;
+          width: 100%;
+        }
+        .dt-toolbar,
+        .dt-footer {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .dt-search-wrap .dataTables_filter input { width: 100% !important; }
         .overview-grid { grid-template-columns: 1fr; }
       }
     "))
@@ -373,6 +447,17 @@ ui <- fluidPage(
           uiOutput("cftp_sheet_ui"),
           uiOutput("cftp_nameplate_ui"),
           selectizeInput(
+            "mapping_model",
+            "Mapping Model",
+            choices = c(
+              "Auto detected" = "auto",
+              "Retail Sales" = "Retail Sales",
+              "Brand Consideration" = "Brand Consideration"
+            ),
+            selected = "auto",
+            options = list(dropdownParent = "body")
+          ),
+          selectizeInput(
             "aggregation_method",
             "Aggregation Method",
             choices = c("sum", "mean"),
@@ -420,7 +505,7 @@ ui <- fluidPage(
                   tags$div(
                     class = "mazda-downloads",
                     downloadButton("download_excel", "Download Excel Report"),
-                    downloadButton("download_long_format", "Download Long Format CSV")
+                    downloadButton("download_long_format", "Download Long Format XLSX")
                   ),
                   class = "sidebar-card-export"
                 )
@@ -508,6 +593,16 @@ ui <- fluidPage(
                     card("Residual Comparison", plotlyOutput("previous_error_plot", height = "410px"))
                   )
                 )
+              )
+            ),
+            tabPanel(
+              "General Model Comparison",
+              uiOutput("previous_model_state"),
+              conditionalPanel(
+                "output.has_previous_comparison",
+                card("Category Comparison", DTOutput("general_category_comparison_table")),
+                card("Sub-Category Comparison", DTOutput("general_subcategory_comparison_table")),
+                card("Halo Comparison", DTOutput("general_halo_comparison_table"))
               )
             ),
             tabPanel("Historical Contributions", card("Historical Contributions Preview", DTOutput("historical_table"))),

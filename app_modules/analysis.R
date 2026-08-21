@@ -9,7 +9,8 @@ calculate_granularity_metrics <- function(df_daily, df_weekly, df_monthly, pred_
 build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_grouping,
                             roi_from, roi_to, compare_new_period,
                             use_gradient, gradient_path, gradient_sheet,
-                            cftp_path, cftp_sheet, cftp_nameplate) {
+                            cftp_path, cftp_sheet, cftp_nameplate,
+                            mapping_model = "auto") {
   df <- data_loaded$df
   df_med <- data_loaded$df_med
   df_med_original <- df_med
@@ -21,6 +22,11 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_
   cftp_message <- paste0(
     "CFTP loaded for ", cftp_nameplate,
     " (", length(unique(cftp_data$Month)), " months)"
+  )
+  mapping_model_info <- detect_mapping_model_type(
+    data_loaded = data_loaded,
+    cftp_nameplate = cftp_nameplate,
+    selected = mapping_model
   )
 
   if (isTRUE(use_gradient) && !is.null(gradient_path) && nzchar(gradient_path)) {
@@ -55,20 +61,22 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_
     df_med_gradient_roi <- df_med %>% filter(Date >= roi_from & Date <= roi_to)
     df_input_roi <- df_input %>% filter(Date >= roi_from & Date <= roi_to)
     correlation_cutoff <- cutoff_date
-    pre_vs_post_table <- build_pre_vs_post_table(df_med, cutoff_date)
+    pre_vs_post_table <- build_pre_vs_post_table(df_med, cutoff_date, mapping_model_type = mapping_model_info$model_type)
     roi_period_label <- paste(as.character(roi_from), "to", as.character(roi_to))
     full_period_table <- build_roi_table(
       df_med_original,
       cftp_data = cftp_data,
       df_input_filtered = df_input,
-      df_pct = df_pct
+      df_pct = df_pct,
+      mapping_model_type = mapping_model_info$model_type
     )
     full_period_table_gradient <- if (gradient_applied) {
       build_roi_table(
         df_med,
         cftp_data = cftp_data,
         df_input_filtered = df_input,
-        df_pct = df_pct
+        df_pct = df_pct,
+        mapping_model_type = mapping_model_info$model_type
       )
     } else {
       data.frame(Message = "Gradient adjustment was not applied.")
@@ -97,7 +105,8 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_
     df_med_roi,
     cftp_data = cftp_data,
     df_input_filtered = df_input_roi,
-    df_pct = NULL
+    df_pct = NULL,
+    mapping_model_type = mapping_model_info$model_type
   )
 
   roi_table_gradient <- if (gradient_applied) {
@@ -105,7 +114,8 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_
       df_med_gradient_roi,
       cftp_data = cftp_data,
       df_input_filtered = df_input_roi,
-      df_pct = NULL
+      df_pct = NULL,
+      mapping_model_type = mapping_model_info$model_type
     )
   } else {
     data.frame(Message = "Gradient adjustment was not applied.")
@@ -137,6 +147,11 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_
     cftp_nameplate = cftp_nameplate,
     cftp_message = cftp_message,
     cftp_missing_months = cftp_missing_months,
+    mapping_model_type = mapping_model_info$model_type,
+    mapping_model_source = mapping_model_info$source,
+    mapping_model_warning = mapping_model_info$warning,
+    mapping_file = mapping_metadata()$file,
+    mapping_sheet = mapping_metadata()$sheet,
     weekly_grouping = weekly_grouping,
     weekly_grouping_label = weekly_grouping_label,
     week_start = week_start,
@@ -161,7 +176,8 @@ build_analysis <- function(data_loaded, cutoff_date, aggregation_method, weekly_
       df_med_original,
       df_input,
       if (isTRUE(gradient_applied)) df_med else NULL,
-      cftp_data = cftp_data
+      cftp_data = cftp_data,
+      mapping_model_type = mapping_model_info$model_type
     ),
     pre_vs_post_table = pre_vs_post_table,
     overview_metrics_gradient = overview_metrics_gradient,
@@ -223,6 +239,7 @@ build_excel_report <- function(analysis, cutoff_date, roi_from, roi_to, previous
   
   if (!is.null(previous_comparison)) {
     add_model_comparison_sheet(wb, previous_comparison)
+    add_general_model_comparison_sheet(wb, previous_comparison)
   }
 
   wb

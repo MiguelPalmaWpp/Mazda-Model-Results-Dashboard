@@ -124,6 +124,7 @@ normalize_comparison_variable_key <- function(x) {
   case_when(
     grepl("kpi_sales_retail_sales_retail_sales.*lag_7", clean) ~ "kpi_sales_retail_sales_retail_sales_lag_7",
     grepl("time_months_time_months.*_12$|month_december|month.*december", clean) ~ "month_december",
+    clean == "variable_marketing_incentives_spend_per_unit" ~ "variable_marketing_incentives_spend",
     TRUE ~ clean
   )
 }
@@ -397,8 +398,8 @@ read_previous_contribution_sheet <- function(filepath, sheet) {
         NA_real_
       ),
       mapping = lapply(Variable, get_channel_mapping),
-      Category = sapply(mapping, `[[`, "category"),
-      `Sub-Category` = sapply(mapping, `[[`, "sub_category")
+      Category = vapply(mapping, mapping_field, character(1), field = "category"),
+      `Sub-Category` = vapply(mapping, mapping_field, character(1), field = "sub_category")
     ) %>%
     select(-mapping)
   
@@ -559,6 +560,7 @@ normalize_previous_roi <- function(df) {
       `Sub-Category` = character(),
       Previous_Units = numeric(),
       Previous_Pct_Contribution = numeric(),
+      Previous_Model_Contribution = numeric(),
       Previous_Spend = numeric(),
       Previous_ROI = numeric()
     ))
@@ -586,6 +588,7 @@ normalize_previous_roi <- function(df) {
       `Sub-Category` = if ("Sub-Category" %in% names(df)) as.character(.data[["Sub-Category"]]) else NA_character_,
       Previous_Units = if (!is.na(units_col)) suppressWarnings(as.numeric(.data[[units_col]])) else NA_real_,
       Previous_Pct_Contribution = if (!is.na(pct_col)) suppressWarnings(as.numeric(.data[[pct_col]])) else NA_real_,
+      Previous_Model_Contribution = if ("Model Contribution" %in% names(df)) suppressWarnings(as.numeric(.data[["Model Contribution"]])) else NA_real_,
       Previous_Spend = if ("Spend" %in% names(df)) suppressWarnings(as.numeric(.data[["Spend"]])) else NA_real_,
       Previous_ROI = roi_values
     ) %>%
@@ -793,6 +796,7 @@ normalize_current_roi <- function(df) {
       `Sub-Category` = character(),
       Current_Units = numeric(),
       Current_Pct_Contribution = numeric(),
+      Current_Model_Contribution = numeric(),
       Current_Spend = numeric(),
       Current_ROI = numeric()
     ))
@@ -806,6 +810,7 @@ normalize_current_roi <- function(df) {
       `Sub-Category` = if ("Sub-Category" %in% names(df)) as.character(.data[["Sub-Category"]]) else NA_character_,
       Current_Units = if ("Units" %in% names(df)) suppressWarnings(as.numeric(.data[["Units"]])) else NA_real_,
       Current_Pct_Contribution = if ("% Contribution" %in% names(df)) suppressWarnings(as.numeric(.data[["% Contribution"]])) else NA_real_,
+      Current_Model_Contribution = if ("Model Contribution" %in% names(df)) suppressWarnings(as.numeric(.data[["Model Contribution"]])) else NA_real_,
       Current_Spend = if ("Spend" %in% names(df)) suppressWarnings(as.numeric(.data[["Spend"]])) else NA_real_,
       Current_ROI = if ("ROI" %in% names(df)) suppressWarnings(as.numeric(.data[["ROI"]])) else NA_real_
     ) %>%
@@ -877,9 +882,9 @@ previous_contribution_totals <- function(previous_report, common_dates = NULL) {
         Previous_Units / sum(Previous_Units, na.rm = TRUE) * 100,
         NA_real_
       ),
-      mapping = lapply(Variable, get_channel_mapping),
-      Category = sapply(mapping, `[[`, "category"),
-      `Sub-Category` = sapply(mapping, `[[`, "sub_category")
+      mapping = lapply(Variable, get_channel_mapping, model_type = analysis$mapping_model_type),
+      Category = vapply(mapping, mapping_field, character(1), field = "category"),
+      `Sub-Category` = vapply(mapping, mapping_field, character(1), field = "sub_category")
     ) %>%
     select(-mapping)
 }
@@ -900,8 +905,26 @@ current_comparison_source <- function(analysis, previous_report = NULL, common_d
     df_med_common,
     cftp_data = analysis$cftp_data,
     df_input_filtered = df_input_common,
-    df_pct = NULL
+    df_pct = NULL,
+    mapping_model_type = analysis$mapping_model_type
   )
+}
+
+previous_excel_roi_for_comparison <- function(previous_report, previous_units) {
+  previous_roi <- previous_report$roi %>%
+    select(
+      variable_key,
+      Previous_Pct_Contribution_ROI = Previous_Pct_Contribution,
+      Previous_Model_Contribution,
+      Previous_ROI,
+      Previous_Spend
+    )
+  
+  full_join(previous_units, previous_roi, by = "variable_key") %>%
+    mutate(
+      Previous_Pct_Contribution = coalesce(Previous_Pct_Contribution_ROI, Previous_Pct_Contribution)
+    ) %>%
+    select(-Previous_Pct_Contribution_ROI)
 }
 
 comparison_roi_table <- function(analysis, previous_report, common_dates = NULL,
@@ -917,9 +940,7 @@ comparison_roi_table <- function(analysis, previous_report, common_dates = NULL,
     if (identical(previous_report$mode, "Long Format") && !is.null(previous_report$long_format)) {
       previous <- previous_long_format_totals(previous_report$long_format, common_dates)
     } else {
-      previous_roi <- previous_report$roi %>%
-        select(variable_key, Previous_ROI, Previous_Spend)
-      previous <- full_join(previous_units, previous_roi, by = "variable_key")
+      previous <- previous_excel_roi_for_comparison(previous_report, previous_units)
     }
   }
   
@@ -1033,6 +1054,140 @@ comparison_variable_table <- function(comparison) {
     )
 }
 
+comparison_general_source <- function(current, previous) {
+  if (is.null(current)) current <- tibble()
+  if (is.null(previous)) previous <- tibble()
+  if (nrow(current) > 0 && !"Current_Model_Contribution" %in% names(current)) {
+    current$Current_Model_Contribution <- NA_real_
+  }
+  if (nrow(previous) > 0 && !"Previous_Model_Contribution" %in% names(previous)) {
+    previous$Previous_Model_Contribution <- NA_real_
+  }
+  
+  empty_source <- tibble(
+    Variable = character(),
+    Category = character(),
+    `Sub-Category` = character(),
+    Current_Units = numeric(),
+    Previous_Units = numeric(),
+    Current_Pct_Contribution = numeric(),
+    Previous_Pct_Contribution = numeric(),
+    Current_Model_Contribution = numeric(),
+    Previous_Model_Contribution = numeric(),
+    Current_Spend = numeric(),
+    Previous_Spend = numeric()
+  )
+  
+  if (nrow(current) == 0 && nrow(previous) == 0) {
+    return(empty_source)
+  }
+  
+  full_join(current, previous, by = "variable_key", suffix = c("_Current", "_Previous")) %>%
+    transmute(
+      Variable = coalesce(Variable_Current, Variable_Previous),
+      Category = coalesce(Category_Current, Category_Previous),
+      `Sub-Category` = coalesce(`Sub-Category_Current`, `Sub-Category_Previous`),
+      Current_Units = coalesce(Current_Units, 0),
+      Previous_Units = coalesce(Previous_Units, 0),
+      Current_Pct_Contribution = coalesce(Current_Pct_Contribution, 0),
+      Previous_Pct_Contribution = coalesce(Previous_Pct_Contribution, 0),
+      Current_Model_Contribution = Current_Model_Contribution,
+      Previous_Model_Contribution = Previous_Model_Contribution,
+      Current_Spend = coalesce(Current_Spend, 0),
+      Previous_Spend = coalesce(Previous_Spend, 0)
+    )
+}
+
+comparison_delta_columns <- function(df) {
+  df %>%
+    mutate(
+      `Delta Units` = `Current Units` - `Previous Units`,
+      `% Delta Units` = comparison_pct_delta(`Current Units`, `Previous Units`),
+      `Delta % Contribution` = `Current % Contribution` - `Previous % Contribution`,
+      `% Delta % Contribution` = comparison_pct_delta(`Current % Contribution`, `Previous % Contribution`)
+    )
+}
+
+comparison_general_group_table <- function(source, group_cols) {
+  if (is.null(source) || nrow(source) == 0) {
+    return(tibble(Message = "No general comparison data available."))
+  }
+  
+  total_current_units <- sum(source$Current_Units, na.rm = TRUE)
+  total_previous_units <- sum(source$Previous_Units, na.rm = TRUE)
+  
+  source %>%
+    group_by(across(all_of(group_cols))) %>%
+    summarise(
+      `Current Units` = sum(Current_Units, na.rm = TRUE),
+      `Previous Units` = sum(Previous_Units, na.rm = TRUE),
+      `Current % Contribution` = ifelse(total_current_units != 0, `Current Units` / total_current_units * 100, NA_real_),
+      `Previous % Contribution` = ifelse(total_previous_units != 0, `Previous Units` / total_previous_units * 100, NA_real_),
+      .groups = "drop"
+    ) %>%
+    comparison_delta_columns() %>%
+    mutate(
+      sort_key = if ("Sub-Category" %in% names(.)) {
+        ifelse(Category == "Base", sort_order_map[["Base"]], coalesce(as.numeric(sort_order_map[`Sub-Category`]), sort_order_map[["Base"]] - 1))
+      } else {
+        ifelse(Category == "Base", sort_order_map[["Base"]], coalesce(as.numeric(sort_order_map[Category]), sort_order_map[["Base"]] - 1))
+      }
+    ) %>%
+    arrange(sort_key, !!!rlang::syms(group_cols)) %>%
+    select(-sort_key)
+}
+
+comparison_general_halo_table <- function(source) {
+  if (is.null(source) || nrow(source) == 0) {
+    return(tibble(Message = "No halo comparison data available."))
+  }
+  
+  total_current_units <- sum(source$Current_Units, na.rm = TRUE)
+  total_previous_units <- sum(source$Previous_Units, na.rm = TRUE)
+  
+  halo_rows <- source %>%
+    filter(grepl("halo", normalize_mapping_key(paste(Variable, Category, `Sub-Category`)))) %>%
+    group_by(Variable, Category, `Sub-Category`) %>%
+    summarise(
+      `Current Units` = sum(Current_Units, na.rm = TRUE),
+      `Previous Units` = sum(Previous_Units, na.rm = TRUE),
+      `Current Spend` = sum(Current_Spend, na.rm = TRUE),
+      `Previous Spend` = sum(Previous_Spend, na.rm = TRUE),
+      `Current % Contribution` = ifelse(total_current_units != 0, `Current Units` / total_current_units * 100, NA_real_),
+      `Previous % Contribution` = ifelse(total_previous_units != 0, `Previous Units` / total_previous_units * 100, NA_real_),
+      .groups = "drop"
+    )
+  
+  if (nrow(halo_rows) == 0) {
+    return(tibble(Message = "No halo rows found in the current or previous model."))
+  }
+  
+  halo_rows %>%
+    comparison_delta_columns() %>%
+    mutate(
+      `Delta Spend` = `Current Spend` - `Previous Spend`,
+      `% Delta Spend` = comparison_pct_delta(`Current Spend`, `Previous Spend`)
+    ) %>%
+    arrange(desc(`Current % Contribution`), desc(`Current Units`), Variable) %>%
+    select(
+      Variable,
+      Category,
+      `Sub-Category`,
+      `Current Units`,
+      `Previous Units`,
+      `Delta Units`,
+      `% Delta Units`,
+      `Current Spend`,
+      `Previous Spend`,
+      `Delta Spend`,
+      `% Delta Spend`,
+      `Current % Contribution`,
+      `Previous % Contribution`,
+      `Delta % Contribution`,
+      `% Delta % Contribution`
+    )
+}
+
 build_previous_model_comparison <- function(analysis, previous_report) {
   if (is.null(previous_report)) {
     return(NULL)
@@ -1044,11 +1199,7 @@ build_previous_model_comparison <- function(analysis, previous_report) {
     previous_long_format_totals(previous_report$long_format, common_dates)
   } else {
     previous_units <- previous_contribution_totals(previous_report, common_dates)
-    full_join(
-      previous_units,
-      previous_report$roi %>% select(variable_key, Previous_ROI, Previous_Spend),
-      by = "variable_key"
-    )
+    previous_excel_roi_for_comparison(previous_report, previous_units)
   }
   previous_units <- previous_roi %>%
     select(variable_key, Variable, Previous_Units, Previous_Pct_Contribution, Category, `Sub-Category`)
@@ -1070,6 +1221,10 @@ build_previous_model_comparison <- function(analysis, previous_report) {
   )
   comparison$weekly_message <- weekly_match_message(comparison$coverage)
   comparison$variable <- comparison_variable_table(comparison)
+  comparison$general_source <- comparison_general_source(current, previous_roi)
+  comparison$general_category <- comparison_general_group_table(comparison$general_source, "Category")
+  comparison$general_subcategory <- comparison_general_group_table(comparison$general_source, c("Category", "Sub-Category"))
+  comparison$general_halo <- comparison_general_halo_table(comparison$general_source)
   comparison
 }
 
@@ -1197,5 +1352,29 @@ add_model_comparison_sheet <- function(wb, comparison) {
   next_row <- write_comparison_table(wb, sheet, "Variable Comparison", comparison$variable, next_row)
 
   setColWidths(wb, sheet, cols = 1:20, widths = c(rep(18, 11), rep(16, 9)))
+  invisible(wb)
+}
+
+add_general_model_comparison_sheet <- function(wb, comparison) {
+  if (is.null(comparison)) {
+    return(invisible(wb))
+  }
+  
+  sheet <- "General Model Comparison"
+  addWorksheet(wb, sheet)
+  writeData(wb, sheet, paste("General Model Comparison - Previous:", comparison$filename), startRow = 1, startCol = 1)
+  addStyle(
+    wb, sheet,
+    createStyle(textDecoration = "bold", fontSize = 15, fontColour = "#1e293b"),
+    rows = 1, cols = 1, gridExpand = TRUE
+  )
+  writeData(wb, sheet, paste("Mode:", comparison$mode, "|", comparison$common_period_message), startRow = 2, startCol = 1)
+  
+  next_row <- 4
+  next_row <- write_comparison_table(wb, sheet, "Category Comparison", comparison$general_category, next_row)
+  next_row <- write_comparison_table(wb, sheet, "Sub-Category Comparison", comparison$general_subcategory, next_row)
+  next_row <- write_comparison_table(wb, sheet, "Halo Comparison", comparison$general_halo, next_row)
+  
+  setColWidths(wb, sheet, cols = 1:20, widths = c(rep(20, 3), rep(16, 17)))
   invisible(wb)
 }

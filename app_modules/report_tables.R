@@ -56,7 +56,8 @@ build_historical_contributions_table <- function(df_med) {
     setNames(sub("^Contrib_", "", colnames(.)))
 }
 
-build_long_format_table <- function(df_med_original, df_input, df_med_gradient = NULL, cftp_data = NULL) {
+build_long_format_table <- function(df_med_original, df_input, df_med_gradient = NULL, cftp_data = NULL,
+                                    mapping_model_type = NULL) {
   contrib_cols <- colnames(df_med_original)[grepl("^Contrib_", colnames(df_med_original))]
   if ("Base" %in% colnames(df_med_original)) {
     contrib_cols <- c(contrib_cols, "Base")
@@ -81,31 +82,17 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
     left_join(variable_lookup, by = "contrib_col") %>%
     select(Date, variable, contribution)
 
-  if (!is.null(df_med_gradient)) {
-    gradient_cols <- intersect(contrib_cols, colnames(df_med_gradient))
-    df_gradient_long <- df_med_gradient %>%
-      select(Date, all_of(gradient_cols)) %>%
-      pivot_longer(
-        cols = -Date,
-        names_to = "contrib_col",
-        values_to = "contribution_gradient"
-      ) %>%
-      left_join(variable_lookup, by = "contrib_col") %>%
-      select(Date, variable, contribution_gradient)
-  } else {
-    df_gradient_long <- NULL
-  }
-
   spend_cols <- setdiff(colnames(df_input), c("Date", "Actual", "Row"))
   spend_cols <- spend_cols[is_spend_column(spend_cols)]
   spend_lookup <- setNames(spend_cols, spend_cols)
   spend_lookup_normalized <- setNames(spend_cols, normalize_mapping_key(spend_cols))
   spend_match <- variable_lookup %>%
     mutate(
-      spend_col = ifelse(
-        variable %in% names(spend_lookup),
-        spend_lookup[variable],
-        spend_lookup_normalized[variable_key]
+      spend_col = case_when(
+        variable %in% names(spend_lookup) ~ spend_lookup[variable],
+        variable_key %in% names(spend_lookup_normalized) ~ spend_lookup_normalized[variable_key],
+        paste0(variable_key, "_spend") %in% names(spend_lookup_normalized) ~ spend_lookup_normalized[paste0(variable_key, "_spend")],
+        TRUE ~ NA_character_
       )
     ) %>%
     filter(!is.na(spend_col), spend_col %in% colnames(df_input)) %>%
@@ -133,12 +120,6 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
     df_long <- df_long %>% mutate(spend = NA_real_)
   }
   
-  if (!is.null(df_gradient_long)) {
-    df_long <- df_long %>% left_join(df_gradient_long, by = c("Date", "variable"))
-  } else {
-    df_long <- df_long %>% mutate(contribution_gradient = contribution)
-  }
-  
   if (!is.null(cftp_data) && nrow(cftp_data) > 0) {
     df_cftp_long <- cftp_data %>%
       select(Month, CFTP = AVG_CFTP) %>%
@@ -156,16 +137,23 @@ build_long_format_table <- function(df_med_original, df_input, df_med_gradient =
     mutate(
       contribution = replace_na(contribution, 0),
       spend = replace_na(spend, 0),
-      CFTP = as.numeric(CFTP),
-      contribution_gradient = coalesce(contribution_gradient, contribution)
+      CFTP = as.numeric(CFTP)
     ) %>%
     arrange(Date, variable) %>%
     mutate(Date = format_app_date(Date)) %>%
-    select(Date, variable, contribution, spend, CFTP, contribution_gradient) %>%
+    select(
+      Date,
+      Variable = variable,
+      Contribution = contribution,
+      Spend = spend,
+      CFTP
+    ) %>%
     round_numeric_columns(3)
 }
 
-build_pre_vs_post_table <- function(df_med, cutoff_date) {
+build_pre_vs_post_table <- function(df_med, cutoff_date, mapping_model_type = NULL) {
+  include_sp <- identical(normalize_mapping_model_type(mapping_model_type), "Brand Consideration")
+  sp_cols <- if (include_sp) c("SP_Mapping", "SP_Channel", "SP_Agg") else character()
   if (is.null(cutoff_date) || is.na(cutoff_date)) {
     return(data.frame(Message = "Pre vs Post is disabled. Enable Compare New Period to calculate this table."))
   }
@@ -201,11 +189,14 @@ build_pre_vs_post_table <- function(df_med, cutoff_date) {
   ) %>%
     mutate(
       var_clean = sub("^Contrib_", "", Variable),
-      mapping = lapply(Variable, get_channel_mapping),
-      Channel = sapply(mapping, `[[`, "channel"),
-      Category = sapply(mapping, `[[`, "category"),
-      Sub_Category = sapply(mapping, `[[`, "sub_category"),
-      Funnel = sapply(mapping, `[[`, "funnel"),
+      mapping = lapply(Variable, get_channel_mapping, model_type = mapping_model_type),
+      Channel = vapply(mapping, mapping_field, character(1), field = "channel"),
+      Category = vapply(mapping, mapping_field, character(1), field = "category"),
+      Sub_Category = vapply(mapping, mapping_field, character(1), field = "sub_category"),
+      Funnel = vapply(mapping, mapping_field, character(1), field = "funnel"),
+      SP_Mapping = if (include_sp) vapply(mapping, mapping_field, character(1), field = "sp_mapping") else NA_character_,
+      SP_Channel = if (include_sp) vapply(mapping, mapping_field, character(1), field = "sp_channel") else NA_character_,
+      SP_Agg = if (include_sp) vapply(mapping, mapping_field, character(1), field = "sp_agg") else NA_character_,
       sort_key = ifelse(
         Category == "Base",
         sort_order_map[["Base"]],
@@ -219,6 +210,7 @@ build_pre_vs_post_table <- function(df_med, cutoff_date) {
       `Sub-Category` = Sub_Category,
       Funnel,
       Channel,
+      any_of(sp_cols),
       `Pre Units` = Pre_Units,
       `Post Units` = Post_Units
     )

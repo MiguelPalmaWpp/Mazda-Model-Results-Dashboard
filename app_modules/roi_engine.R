@@ -1,6 +1,9 @@
 build_roi_table <- function(df_med_input, cftp_data,
                             df_input_filtered = NULL,
-                            df_pct = NULL) {
+                            df_pct = NULL,
+                            mapping_model_type = NULL) {
+  include_sp <- identical(normalize_mapping_model_type(mapping_model_type), "Brand Consideration")
+  sp_cols <- if (include_sp) c("SP_Mapping", "SP_Channel", "SP_Agg") else character()
   all_cols <- colnames(df_med_input)
   contrib_cols <- all_cols[grepl("^Contrib_", all_cols)]
   has_base <- "Base" %in% all_cols
@@ -84,11 +87,14 @@ build_roi_table <- function(df_med_input, cftp_data,
   units %>%
     mutate(
       var_clean = sub("^Contrib_", "", Variable),
-      mapping = lapply(Variable, get_channel_mapping),
-      Channel = sapply(mapping, `[[`, "channel"),
-      Category = sapply(mapping, `[[`, "category"),
-      Sub_Category = sapply(mapping, `[[`, "sub_category"),
-      Funnel = sapply(mapping, `[[`, "funnel"),
+      mapping = lapply(Variable, get_channel_mapping, model_type = mapping_model_type),
+      Channel = vapply(mapping, mapping_field, character(1), field = "channel"),
+      Category = vapply(mapping, mapping_field, character(1), field = "category"),
+      Sub_Category = vapply(mapping, mapping_field, character(1), field = "sub_category"),
+      Funnel = vapply(mapping, mapping_field, character(1), field = "funnel"),
+      SP_Mapping = if (include_sp) vapply(mapping, mapping_field, character(1), field = "sp_mapping") else NA_character_,
+      SP_Channel = if (include_sp) vapply(mapping, mapping_field, character(1), field = "sp_channel") else NA_character_,
+      SP_Agg = if (include_sp) vapply(mapping, mapping_field, character(1), field = "sp_agg") else NA_character_,
       sort_key = ifelse(
         Category == "Base",
         sort_order_map[["Base"]],
@@ -131,7 +137,8 @@ build_roi_table <- function(df_med_input, cftp_data,
       Category,
       `Sub-Category` = Sub_Category,
       Funnel,
-      Channel
+      Channel,
+      any_of(sp_cols)
     )
 }
 
@@ -162,15 +169,16 @@ write_roi_sheet <- function(wb, sheet_name, df_export) {
   }
 
   setColWidths(wb, sheet_name,
-               cols = seq_along(ROI_COL_WIDTHS),
-               widths = ROI_COL_WIDTHS)
+               cols = seq_len(ncol(df_export)),
+               widths = c(ROI_COL_WIDTHS, rep(16, max(0, ncol(df_export) - length(ROI_COL_WIDTHS)))))
 
   cat(" ->", sheet_name, "written:", nrow(df_export), "rows\n")
 }
 
 add_roi_sheet <- function(wb, df_med, df_input,
                           contrib_date_from, contrib_date_to,
-                          cftp_data) {
+                          cftp_data,
+                          mapping_model_type = NULL) {
   cat("\nBuilding ROI sheet (filtered period)...\n")
 
   df_med_f <- df_med %>% filter(Date >= contrib_date_from & Date <= contrib_date_to)
@@ -181,18 +189,21 @@ add_roi_sheet <- function(wb, df_med, df_input,
 
   df_export <- build_roi_table(df_med_f, cftp_data = cftp_data,
                                df_input_filtered = df_input_f,
-                               df_pct = NULL)
+                               df_pct = NULL,
+                               mapping_model_type = mapping_model_type)
   write_roi_sheet(wb, "ROI", df_export)
 }
 
 add_full_period_contrib_sheet <- function(wb, df_med, df_pct, df_input,
-                                          cftp_data) {
+                                          cftp_data,
+                                          mapping_model_type = NULL) {
   cat("\nBuilding Full Period Contribution sheet (all dates)...\n")
   cat("  Date range:", as.character(min(df_med$Date)), "->", as.character(max(df_med$Date)), "\n")
   cat("  Total rows:", nrow(df_med), "\n")
 
   df_export <- build_roi_table(df_med, cftp_data = cftp_data,
                                df_input_filtered = df_input,
-                               df_pct = df_pct)
+                               df_pct = df_pct,
+                               mapping_model_type = mapping_model_type)
   write_roi_sheet(wb, "Full Period Contribution", df_export)
 }

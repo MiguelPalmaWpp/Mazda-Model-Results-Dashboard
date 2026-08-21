@@ -365,6 +365,9 @@ is_spend_column <- function(x) {
 
 default_master_mapping_paths <- function() {
   paths <- c(
+    file.path(Sys.getenv("USERPROFILE"), "OneDrive - insidemedia.net", "Documentos", "Mazda", "Mapping.xlsx"),
+    if(exists("app_path", mode = "function")) app_path("Mapping.xlsx") else NA_character_,
+    if(exists("app_path", mode = "function")) app_path("inputs", "Mapping.xlsx") else NA_character_,
     if(exists("app_path", mode = "function")) app_path("FY160 B2D Master Mapping File.xlsx") else NA_character_,
     if(exists("app_path", mode = "function")) app_path("inputs", "FY160 B2D Master Mapping File.xlsx") else NA_character_,
     file.path(Sys.getenv("USERPROFILE"), "Downloads", "FY160 B2D Master Mapping File.xlsx")
@@ -382,20 +385,90 @@ load_master_mapping <- function(mapping_path = NULL) {
   
   if(is.na(mapping_file) || length(mapping_file) == 0) {
     mapping_cache$mapping <- data.frame()
+    mapping_cache$metadata <- list(file = NA_character_, sheet = NA_character_, models = character())
     return(mapping_cache$mapping)
   }
   
-  mapping <- openxlsx::read.xlsx(mapping_file, sheet = "Mapping") %>%
+  sheets <- openxlsx::getSheetNames(mapping_file)
+  sheet <- if ("Mapping File" %in% sheets) "Mapping File" else if ("Mapping" %in% sheets) "Mapping" else sheets[[1]]
+  
+  mapping <- openxlsx::read.xlsx(mapping_file, sheet = sheet) %>%
     dplyr::as_tibble() %>%
     mutate(
       across(everything(), ~ ifelse(is.na(.x), NA_character_, trimws(as.character(.x)))),
+      Model = if ("Model" %in% colnames(.)) Model else NA_character_,
       Variable_Key = normalize_mapping_key(Variable)
     ) %>%
     filter(!is.na(Variable), Variable != "") %>%
-    distinct(Variable_Key, .keep_all = TRUE)
+    distinct(Model, Variable_Key, .keep_all = TRUE)
   
   mapping_cache$mapping <- mapping
+  mapping_cache$metadata <- list(
+    file = mapping_file,
+    sheet = sheet,
+    models = sort(unique(na.omit(mapping$Model)))
+  )
   mapping
+}
+
+mapping_metadata <- function() {
+  load_master_mapping()
+  mapping_cache$metadata %||% list(file = NA_character_, sheet = NA_character_, models = character())
+}
+
+normalize_mapping_model_type <- function(model_type) {
+  model_type <- trimws(as.character(model_type %||% ""))
+  key <- normalize_mapping_key(model_type)
+  if (key %in% c("retail_sales", "retailsales", "retail")) return("Retail Sales")
+  if (key %in% c("brand_consideration", "brandconsideration", "brand")) return("Brand Consideration")
+  NA_character_
+}
+
+mapping_nameplate_values <- c("cx30", "cx50", "cx50_hybrid", "cx70", "cx90", "cx5", "mazda3", "mx5", "other")
+
+detect_mapping_model_type <- function(data_loaded = NULL, cftp_nameplate = NULL, selected = "auto") {
+  selected_type <- normalize_mapping_model_type(selected)
+  if (!is.na(selected_type)) {
+    return(list(
+      model_type = selected_type,
+      source = "manual override",
+      warning = NA_character_
+    ))
+  }
+  
+  signals <- character()
+  reasons <- character()
+  nameplate_key <- normalize_mapping_key(cftp_nameplate %||% "")
+  if (nameplate_key %in% mapping_nameplate_values) {
+    signals <- c(signals, "Retail Sales")
+    reasons <- c(reasons, paste("CFTP Final_Nameplate =", cftp_nameplate))
+  }
+  
+  kpi_col <- data_loaded$diagnostics$kpi_column %||% ""
+  kpi_key <- normalize_mapping_key(kpi_col)
+  if (grepl("brand|consideration|brand_health|kpi_brand", kpi_key)) {
+    signals <- c(signals, "Brand Consideration")
+    reasons <- c(reasons, paste("KPI column =", kpi_col))
+  }
+  
+  unique_signals <- unique(signals)
+  if (length(unique_signals) == 1) {
+    return(list(model_type = unique_signals[[1]], source = paste(reasons, collapse = "; "), warning = NA_character_))
+  }
+  
+  if (length(unique_signals) > 1) {
+    return(list(
+      model_type = "Retail Sales",
+      source = paste(reasons, collapse = "; "),
+      warning = paste("Ambiguous mapping model signals:", paste(unique_signals, collapse = " and "), "- defaulted to Retail Sales.")
+    ))
+  }
+  
+  list(
+    model_type = "Retail Sales",
+    source = "No specific mapping model signal found; defaulted to Retail Sales.",
+    warning = NA_character_
+  )
 }
 
 infer_funnel_from_name <- function(col_name) {
@@ -453,8 +526,22 @@ mapping_row_to_list <- function(row) {
     sp_mapping = row$SP_Mapping,
     sp_channel = row$SP_Channel,
     sp_agg = row$SP_Agg,
-    mapping_source = "FY160 mapping"
+    mapping_source = "master mapping"
   )
+}
+
+strip_sp_for_retail <- function(mapping, model_type = NULL) {
+  if (identical(normalize_mapping_model_type(model_type), "Retail Sales")) {
+    mapping$sp_mapping <- NULL
+    mapping$sp_channel <- NULL
+    mapping$sp_agg <- NULL
+  }
+  mapping
+}
+
+mapping_field <- function(mapping, field) {
+  value <- mapping[[field]]
+  if (is.null(value) || length(value) == 0 || is.na(value)) NA_character_ else as.character(value)
 }
 
 apply_channel_mapping_overrides <- function(mapping, col_name) {
@@ -479,8 +566,8 @@ apply_channel_mapping_overrides <- function(mapping, col_name) {
   }
   
   if(grepl("earned_media", clean) && grepl("(^|_)sov($|_)|share_of_voice", clean)) {
-    mapping$channel <- "Earned Media"
-    mapping$category <- "Earned Media - SOV"
+    mapping$channel <- "Earned Media - SOV"
+    mapping$category <- "Earned Media"
     mapping$sub_category <- "Earned Media - SOV"
     mapping$funnel <- "Earned Media - SOV"
     mapping$sp_channel <- "Earned Media - SOV"
@@ -505,7 +592,7 @@ apply_channel_mapping_overrides <- function(mapping, col_name) {
   mapping
 }
 
-fallback_channel_mapping <- function(col_name) {
+fallback_channel_mapping <- function(col_name, model_type = NULL) {
   clean <- normalize_mapping_key(col_name)
   funnel <- infer_funnel_from_name(col_name)
   sp_mapping <- "NonMedia"
@@ -588,7 +675,7 @@ fallback_channel_mapping <- function(col_name) {
     channel <- category <- sub_category <- funnel <- sp_channel <- "Base"
   }
   
-  apply_channel_mapping_overrides(list(
+  strip_sp_for_retail(apply_channel_mapping_overrides(list(
     channel = channel,
     category = category,
     sub_category = sub_category,
@@ -597,18 +684,29 @@ fallback_channel_mapping <- function(col_name) {
     sp_channel = sp_channel,
     sp_agg = sp_agg,
     mapping_source = "fallback rules"
-  ), col_name)
+  ), col_name), model_type)
 }
 
-get_channel_mapping <- function(col_name) {
+get_channel_mapping <- function(col_name, model_type = NULL) {
   mapping <- load_master_mapping()
   lookup_key <- normalize_mapping_key(col_name)
+  selected_model <- normalize_mapping_model_type(model_type)
   
-  if(nrow(mapping) > 0 && lookup_key %in% mapping$Variable_Key) {
-    return(apply_channel_mapping_overrides(mapping_row_to_list(mapping[match(lookup_key, mapping$Variable_Key), ]), col_name))
+  if(nrow(mapping) > 0) {
+    if (!is.na(selected_model) && "Model" %in% colnames(mapping)) {
+      model_match <- which(mapping$Variable_Key == lookup_key & mapping$Model == selected_model)
+      if (length(model_match) > 0) {
+        return(strip_sp_for_retail(apply_channel_mapping_overrides(mapping_row_to_list(mapping[model_match[[1]], ]), col_name), selected_model))
+      }
+    }
+    
+    any_match <- which(mapping$Variable_Key == lookup_key)
+    if (length(any_match) > 0) {
+      return(strip_sp_for_retail(apply_channel_mapping_overrides(mapping_row_to_list(mapping[any_match[[1]], ]), col_name), selected_model))
+    }
   }
   
-  fallback_channel_mapping(col_name)
+  fallback_channel_mapping(col_name, selected_model)
 }
 
 match_spend_total <- function(var_clean, spend_lookup, spend_lookup_normalized) {
